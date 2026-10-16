@@ -230,6 +230,30 @@ def many_pages(count: int = 50) -> bytes:
     return doc.tobytes()
 
 
+PII_LINES = [
+    "Applicant: Jane Q. Doe",
+    "SSN: 123-45-6789    Phone: (202) 555-0143",
+    "Email: jane.doe@example.com",
+    "Address: 1600 Pennsylvania Avenue",
+    f"Case reference {SECRET} was opened after an inter-",
+    "national review of the file.",
+]
+PII_PAGE_2 = [
+    "Second contact: john.smith@example.org, 415-555-2671",
+    f"Card on file 4111 1111 1111 1111; ref {SECRET}",
+]
+
+
+def personal_info() -> bytes:
+    """Two pages of personal information (and SECRET), with a word hyphenated across lines."""
+    doc = pymupdf.open()
+    for lines in (PII_LINES, PII_PAGE_2):
+        page = doc.new_page()
+        for i, text in enumerate(lines):
+            page.insert_text((72, 100 + i * 16), text, fontsize=12)
+    return doc.tobytes()
+
+
 def kitchen_sink() -> bytes:
     """A multi-page demo document combining most cases (for manual testing)."""
     parts = [text_basic(), image_with_ocr_text(), rotated(90), vector_graphics(), annotations()]
@@ -263,6 +287,7 @@ FIXTURES: dict[str, Callable[[], bytes]] = {
     "encrypted": encrypted,
     "multi_column": multi_column,
     "many_pages": many_pages,
+    "personal_info": personal_info,
     "kitchen_sink": kitchen_sink,
 }
 

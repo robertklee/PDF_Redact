@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
+import re
 import uuid
+from collections.abc import Iterable, Iterator
 from dataclasses import asdict
 from typing import Annotated
 
@@ -15,16 +18,23 @@ from fastapi.responses import FileResponse
 from .config import Settings
 from .core import ENGINE_LOCK
 from .core.inspect import document_notices, page_infos
+from .core.pii import DETECTORS, DETECTORS_BY_ID, CustomPattern, detect, keyword_pattern
 from .core.redact import redact_bytes
+from .core.search import Match, compile_query, find
 from .core.text import page_text_payload
 from .core.verify import verify_bytes
 from .models import (
     ApplyRequest,
     CheckOut,
+    DetectorOut,
+    DetectRequest,
     DocumentOut,
+    MatchOut,
     NoticeOut,
     OutputOut,
     PageOut,
+    SearchOut,
+    SearchRequest,
     StatsOut,
     UnlockRequest,
     VerificationOut,
@@ -35,6 +45,8 @@ router = APIRouter(prefix="/api")
 
 # The PDF header may be preceded by junk; readers accept it within the first 1 KiB.
 HEADER_WINDOW = 1024
+# Search and detection stop after this many hits.
+MAX_MATCHES = 5000
 
 
 def get_store(request: Request) -> Store:
@@ -174,15 +186,99 @@ def delete_document(document_id: str, store: StoreDep) -> Response:
     return Response(status_code=204)
 
 
+def _page_texts(document: StoredDocument, pages: list[int] | None) -> list[dict]:
+    """Cached text payloads of the given pages (all pages if None), in page order."""
+    with ENGINE_LOCK:
+        count = document.doc.page_count
+        wanted = range(count) if pages is None else sorted(set(pages))
+        if wanted and not 0 <= wanted[-1] < count:
+            raise HTTPException(404, "Page not found")
+        for page in wanted:
+            if page not in document.text_cache:
+                document.text_cache[page] = page_text_payload(document.doc[page])
+        return [document.text_cache[page] for page in wanted]
+
+
+def _search_out(matches: Iterable[Match]) -> SearchOut:
+    hits = list(itertools.islice(matches, MAX_MATCHES + 1))
+    return SearchOut(
+        matches=[
+            MatchOut(
+                page=m.page,
+                rects=m.rects,
+                text=m.text,
+                angle=m.angle,
+                before=m.before,
+                after=m.after,
+                category=m.category,
+            )
+            for m in hits[:MAX_MATCHES]
+        ],
+        truncated=len(hits) > MAX_MATCHES,
+    )
+
+
+def _compile(pattern: str, mode: str, case_sensitive: bool, name: str | None = None):
+    try:
+        return compile_query(pattern, mode, case_sensitive)
+    except re.error as exc:
+        where = f" “{name}”" if name else ""
+        raise HTTPException(422, f"Invalid regular expression{where}: {exc}") from None
+
+
 @router.get("/documents/{document_id}/pages/{page}/text")
 def page_text(document_id: str, page: int, store: StoreDep) -> dict:
     document = _unlocked(store, document_id)
-    with ENGINE_LOCK:
-        if not 0 <= page < document.doc.page_count:
-            raise HTTPException(404, "Page not found")
-        if page not in document.text_cache:
-            document.text_cache[page] = page_text_payload(document.doc[page])
-        return document.text_cache[page]
+    if page < 0:
+        raise HTTPException(404, "Page not found")
+    return _page_texts(document, [page])[0]
+
+
+@router.post("/documents/{document_id}/search")
+def search_document(document_id: str, body: SearchRequest, store: StoreDep) -> SearchOut:
+    """Find text, a phrase or a regular expression; matches come back as mark geometry."""
+    document = _unlocked(store, document_id)
+    if body.mode != "regex" and not body.query.strip():
+        raise HTTPException(422, "Enter something to search for")
+    pattern = _compile(body.query, body.mode, body.case_sensitive)
+    texts = _page_texts(document, body.pages)
+
+    def matches() -> Iterator[Match]:
+        for text in texts:
+            yield from find(text["index"], text["lines"], pattern)
+
+    return _search_out(matches())
+
+
+@router.get("/detectors")
+def list_detectors() -> list[DetectorOut]:
+    return [
+        DetectorOut(
+            id=d.id, label=d.label, short=d.short, description=d.description, default=d.default
+        )
+        for d in DETECTORS
+    ]
+
+
+@router.post("/documents/{document_id}/detect")
+def detect_pii(document_id: str, body: DetectRequest, store: StoreDep) -> SearchOut:
+    """Find personal information, keywords and custom patterns."""
+    document = _unlocked(store, document_id)
+    unknown = [c for c in body.categories if c not in DETECTORS_BY_ID]
+    if unknown:
+        raise HTTPException(422, f"Unknown detector: {', '.join(unknown)}")
+    detectors = [d for d in DETECTORS if d.id in body.categories]
+    keywords = keyword_pattern(body.keywords)
+    custom = [
+        CustomPattern(p.name, _compile(p.pattern, "regex", True, p.name)) for p in body.patterns
+    ]
+    texts = _page_texts(document, body.pages)
+
+    def matches() -> Iterator[Match]:
+        for text in texts:
+            yield from detect(text["index"], text["lines"], detectors, keywords, custom)
+
+    return _search_out(matches())
 
 
 @router.post("/documents/{document_id}/apply")

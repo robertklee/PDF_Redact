@@ -189,3 +189,120 @@ def test_filenames() -> None:
     assert clean_filename("") == "document.pdf"
     assert redacted_filename("Secret.PDF") == "Secret_redacted.pdf"
     assert redacted_filename("notes") == "notes_redacted.pdf"
+
+
+def _search(client, doc_id: str, **body):
+    return client.post(f"/api/documents/{doc_id}/search", json=body)
+
+
+def test_search_returns_mark_geometry(client) -> None:
+    doc_id = upload(client, corpus.many_pages(3)).json()["id"]
+    res = _search(client, doc_id, query=SECRET.lower())
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["truncated"] is False
+    assert [m["page"] for m in body["matches"]] == [0, 1, 2]
+    hit = body["matches"][0]
+    assert hit["text"] == SECRET
+    assert hit["before"].endswith(f"{ABOVE} Account number ")
+    assert hit["after"].startswith(" is confidential.")
+    assert hit["angle"] == 0
+
+    # The rect is exactly what a manual text mark needs: applying it removes the secret.
+    marks = [
+        {"id": f"m{i}", "page": m["page"], "kind": "text", "rects": m["rects"]}
+        for i, m in enumerate(body["matches"])
+    ]
+    out = client.post(f"/api/documents/{doc_id}/apply", json={"marks": marks}).json()
+    assert out["verification"]["passed"] is True
+    pdf = client.get(f"/api/outputs/{out['id']}/file").content
+    text = mupdf_text(pdf)
+    assert SECRET not in text
+    assert text.count(ABOVE) == 3
+
+
+def test_search_options_and_page_filter(client) -> None:
+    doc_id = upload(client, corpus.many_pages(3)).json()["id"]
+    assert _search(client, doc_id, query="visible", caseSensitive=True).json()["matches"] == []
+    res = _search(client, doc_id, query=r"Page \d", mode="regex", pages=[2, 1]).json()
+    assert [(m["page"], m["text"]) for m in res["matches"]] == [(1, "Page 2"), (2, "Page 3")]
+    words = _search(client, doc_id, query="lin", mode="word").json()["matches"]
+    assert words == []
+
+
+def test_search_on_rotated_page(client) -> None:
+    data = corpus.rotated(90)
+    doc_id = upload(client, data).json()["id"]
+    [hit] = _search(client, doc_id, query=SECRET).json()["matches"]
+    [expected] = display_hits(data, SECRET)
+    assert hit["rects"] == [pytest.approx(expected, abs=0.01)]
+    assert hit["angle"] in (90, 270)
+
+
+def test_search_errors(client) -> None:
+    doc_id = upload(client, corpus.text_basic()).json()["id"]
+    res = _search(client, doc_id, query="(oops", mode="regex")
+    assert res.status_code == 422
+    assert "Invalid regular expression" in res.json()["detail"]
+    assert _search(client, doc_id, query="   ").status_code == 422
+    assert _search(client, doc_id, query="x", pages=[5]).status_code == 404
+    assert _search(client, "nope", query="x").status_code == 404
+
+    locked = upload(client, corpus.encrypted()).json()["id"]
+    assert _search(client, locked, query="x").status_code == 423
+
+
+def test_search_truncates(client, monkeypatch) -> None:
+    from pdf_redact import api
+
+    monkeypatch.setattr(api, "MAX_MATCHES", 4)
+    doc_id = upload(client, corpus.many_pages(3)).json()["id"]
+    body = _search(client, doc_id, query="visible").json()
+    assert len(body["matches"]) == 4
+    assert body["truncated"] is True
+
+
+def test_detectors_list(client) -> None:
+    detectors = client.get("/api/detectors").json()
+    ids = [d["id"] for d in detectors]
+    assert {"ssn", "email", "phone", "card"} <= set(ids)
+    assert all(d["label"] and d["short"] and "default" in d for d in detectors)
+
+
+def test_detect_personal_info(client) -> None:
+    doc_id = upload(client, corpus.personal_info()).json()["id"]
+    res = client.post(
+        f"/api/documents/{doc_id}/detect",
+        json={
+            "categories": ["ssn", "email", "phone", "card", "address"],
+            "keywords": ["international", "jane q. doe"],
+            "patterns": [{"name": "Case ref", "pattern": r"TOPSECRET-\d+"}],
+        },
+    )
+    assert res.status_code == 200, res.text
+    found = [(m["page"], m["category"], m["text"]) for m in res.json()["matches"]]
+    assert found == [
+        (0, "keyword", "Jane Q. Doe"),
+        (0, "ssn", "123-45-6789"),
+        (0, "phone", "(202) 555-0143"),
+        (0, "email", "jane.doe@example.com"),
+        (0, "address", "1600 Pennsylvania Avenue"),
+        (0, "custom:Case ref", SECRET),
+        (0, "keyword", "inter- national"),
+        (1, "email", "john.smith@example.org"),
+        (1, "phone", "415-555-2671"),
+        (1, "card", "4111 1111 1111 1111"),
+        (1, "custom:Case ref", SECRET),
+    ]
+
+
+def test_detect_errors(client) -> None:
+    doc_id = upload(client, corpus.text_basic()).json()["id"]
+    url = f"/api/documents/{doc_id}/detect"
+    res = client.post(url, json={"categories": ["ssn", "horoscope"]})
+    assert res.status_code == 422
+    assert "horoscope" in res.json()["detail"]
+    res = client.post(url, json={"patterns": [{"name": "Bad", "pattern": "[a-"}]})
+    assert res.status_code == 422
+    assert "“Bad”" in res.json()["detail"]
+    assert client.post(url, json={}).json() == {"matches": [], "truncated": False}

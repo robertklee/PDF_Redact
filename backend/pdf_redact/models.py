@@ -138,3 +138,50 @@ class OutputOut(ApiModel):
     sha256: str
     stats: StatsOut
     verification: VerificationOut
+
+
+PageList = Annotated[list[Annotated[int, Field(ge=0)]] | None, Field(max_length=100_000)]
+
+
+class SearchRequest(ApiModel):
+    query: str = Field(min_length=1, max_length=1000)
+    mode: Literal["phrase", "word", "regex"] = "phrase"
+    case_sensitive: bool = False
+    pages: PageList = None
+
+
+class PatternIn(ApiModel):
+    name: str = Field(min_length=1, max_length=100)
+    pattern: str = Field(min_length=1, max_length=1000)
+
+
+class DetectRequest(ApiModel):
+    categories: list[str] = Field(default_factory=list, max_length=100)
+    keywords: list[Annotated[str, Field(max_length=200)]] = Field(
+        default_factory=list, max_length=1000
+    )
+    patterns: list[PatternIn] = Field(default_factory=list, max_length=100)
+    pages: PageList = None
+
+
+class MatchOut(ApiModel):
+    page: int
+    rects: list[tuple[float, float, float, float]]
+    text: str
+    angle: int | None
+    before: str
+    after: str
+    category: str | None = None
+
+
+class SearchOut(ApiModel):
+    matches: list[MatchOut]
+    truncated: bool
+
+
+class DetectorOut(ApiModel):
+    id: str
+    label: str
+    short: str
+    description: str
+    default: bool
