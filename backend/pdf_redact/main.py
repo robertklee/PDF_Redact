@@ -9,8 +9,10 @@ from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .api import router as api_router
 from .config import Settings
 from .security import install_security
+from .store import Store
 
 health_router = APIRouter(prefix="/api")
 
@@ -27,7 +29,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        yield
+        app.state.store = Store()
+        try:
+            yield
+        finally:
+            app.state.store.close()
 
     app = FastAPI(
         title="PDF Redact",
@@ -40,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     install_security(app, settings)
     app.include_router(health_router)
+    app.include_router(api_router)
 
     if settings.static_dir is not None:
         app.mount("/", StaticFiles(directory=settings.static_dir, html=True), name="ui")
