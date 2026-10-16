@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "httpx>=0.27", "pypdf>=4", "ruff>=0.5"]
+dev = ["pytest>=8", "httpx>=0.27", "pypdf>=4", "cryptography>=42", "ruff>=0.5"]
 
 [project.scripts]
 pdf-redact = "pdf_redact.main:cli"
