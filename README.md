@@ -17,6 +17,12 @@ See [PLAN.md](PLAN.md) for the feature specification and milestones.
   - **Select** (`V`): select, move, resize and nudge marks with the arrow keys.
   - **Mark pages…**: redact whole pages by range, e.g. `1, 4-7, odd`.
   - Undo and redo (`⌘Z`/`Ctrl+Z`, `⇧⌘Z`/`Ctrl+Y`), delete (`Del`), select all (`⌘A`/`Ctrl+A`).
+- **Search** (`⌘F`/`Ctrl+F`): find text (whole words, match case, regular expressions) on all pages,
+  the current page or a range. Matches survive line-break hyphenation and typographic quotes/dashes.
+  Review the hits, then mark the selected ones in one step.
+- **Personal info**: detect SSNs, EINs, phone numbers, emails, payment cards (Luhn-checked), IBANs,
+  IP addresses, passport and driver's license numbers, US street addresses and (opt-in) dates, plus
+  your own keywords and named regular expressions. Pattern lists can be saved and loaded as JSON.
 - Appearance: fill colour (or none), overlay text such as `(b)(6)`, text colour, size and alignment.
   Hover over a mark, or turn on **Preview**, to see how it will look.
 - **Apply**: choose how images and vector graphics under marks are handled, then download a redacted
