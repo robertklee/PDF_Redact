@@ -77,6 +77,10 @@ class OptionsIn(ApiModel):
 class ApplyRequest(ApiModel):
     marks: list[MarkIn] = Field(max_length=100_000)
     options: OptionsIn = Field(default_factory=OptionsIn)
+    # Texts marked from search or detection results; verification checks none remain in the file.
+    search_terms: list[Annotated[str, Field(max_length=1000)]] = Field(
+        default_factory=list, max_length=100_000
+    )
 
 
 class UnlockRequest(ApiModel):

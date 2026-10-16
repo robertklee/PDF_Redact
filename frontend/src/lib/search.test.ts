@@ -8,6 +8,7 @@ import {
   parseDetectList,
   parseKeywords,
   searchMode,
+  searchTerms,
   serializeDetectList,
 } from "./search";
 
@@ -63,6 +64,20 @@ describe("coveredHits", () => {
 
   it("ignores partial overlap", () => {
     expect(coveredHits(hits, [mark(0, "area", [20, 0, 200, 200])])).toEqual(new Set());
+  });
+});
+
+describe("searchTerms", () => {
+  it("collects distinct texts of search and detection marks", () => {
+    const marks: Mark[] = [
+      { ...mark(0, "text", [0, 0, 1, 1]), text: "Jane Doe", source: "search" },
+      { ...mark(1, "text", [0, 0, 1, 1]), text: " Jane Doe ", source: "detect" },
+      { ...mark(1, "text", [0, 0, 1, 1]), text: "555-0143", source: "detect" },
+      { ...mark(2, "text", [0, 0, 1, 1]), text: "selected by hand", source: "manual" },
+      { ...mark(2, "text", [0, 0, 1, 1]), text: "legacy mark" },
+      { ...mark(3, "text", [0, 0, 1, 1]), text: "  ", source: "search" },
+    ];
+    expect(searchTerms(marks)).toEqual(["Jane Doe", "555-0143"]);
   });
 });
 

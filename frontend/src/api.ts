@@ -9,6 +9,7 @@ import type {
   SearchRequest,
   SearchResponse,
 } from "./types";
+import { searchTerms } from "./lib/search";
 
 const TOKEN_KEY = "pdf-redact-token";
 
@@ -109,7 +110,7 @@ export const api = {
       rects: kind === "page" ? [] : rects,
       appearance,
     }));
-    return post(`/api/documents/${id}/apply`, { marks: wire, options });
+    return post(`/api/documents/${id}/apply`, { marks: wire, options, searchTerms: searchTerms(marks) });
   },
 
   /** Fetch the output (the token must go in a header) and hand it to the browser as a download. */

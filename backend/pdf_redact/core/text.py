@@ -88,6 +88,11 @@ def extract_lines(page: pymupdf.Page) -> list[list[Char]]:
     return lines
 
 
+def line_texts(page: pymupdf.Page) -> list[str]:
+    """The text of each line, like ``extract_lines`` but much faster as it skips geometry."""
+    return page.get_text("text", flags=TEXT_FLAGS).split("\n")
+
+
 def page_text_payload(page: pymupdf.Page) -> dict:
     """Text geometry for the UI, in display space."""
     out_lines = []

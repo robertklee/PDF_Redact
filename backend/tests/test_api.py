@@ -127,6 +127,24 @@ def test_apply_validation(client) -> None:
     assert client.post(url, json={"marks": ok}).status_code == 200
 
 
+def test_apply_checks_search_terms(client) -> None:
+    data = corpus.personal_info()
+    doc_id = upload(client, data).json()["id"]
+    hits = client.post(f"/api/documents/{doc_id}/search", json={"query": SECRET}).json()
+    first = hits["matches"][0]
+    marks = [{**_mark(first["rects"]), "page": first["page"]}]
+    url = f"/api/documents/{doc_id}/apply"
+    res = client.post(url, json={"marks": marks, "searchTerms": [first["text"]]})
+    assert res.status_code == 200, res.text
+    verification = res.json()["verification"]
+    assert verification["passed"] is True
+    [check] = [c for c in verification["checks"] if c["name"] == "residual-text"]
+    assert check["status"] == "warn" and check["page"] == 1
+
+    too_long = {"marks": marks, "searchTerms": ["x" * 1001]}
+    assert client.post(url, json=too_long).status_code == 422
+
+
 @pytest.mark.parametrize("password", [USER_PASSWORD, OWNER_PASSWORD])
 def test_encrypted_document_flow(client, password: str) -> None:
     data = corpus.encrypted()

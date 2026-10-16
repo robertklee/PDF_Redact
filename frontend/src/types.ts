@@ -19,7 +19,10 @@ export interface Mark {
   kind: MarkKind;
   rects: Rect[];
   appearance: Appearance;
-  /** Selected text, kept in the browser only for the marks list. Never sent to the server. */
+  /**
+   * Selected text, for the marks list. Only the text of search and detection marks is sent to the
+   * (local) server, so verification can check that it appears nowhere else in the output.
+   */
   text?: string;
   /** Display-space writing angle of the marked text (0/90/180/270), for the overlay preview. */
   angle?: number;

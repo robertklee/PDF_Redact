@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -12,10 +13,13 @@ import pymupdf
 
 from .geometry import contains_point, inset, overlaps, segment_intersects_rect, touches
 from .redact import Mark, RedactOptions, mark_regions, open_pdf
-from .text import extract_lines
+from .search import normalize, page_indexes
+from .text import extract_lines, line_texts
 
 Status = Literal["pass", "warn", "fail"]
 _SEVERITY = {"pass": 0, "warn": 1, "fail": 2}
+_LINE_HYPHEN = re.compile(r"(?<=\w)-\s+(?=\w)")
+MAX_RESIDUAL_CHECKS = 50
 
 
 @dataclass
@@ -44,6 +48,25 @@ class Verification:
 
 def _squash(text: str) -> str:
     return "".join(text.split())
+
+
+def _fold(text: str) -> str:
+    """Text as compared by the residual check: normalised, without whitespace, case-folded."""
+    return _squash(normalize(text)).casefold()
+
+
+def _quote(text: str, limit: int = 60) -> str:
+    text = " ".join(text.split())
+    return f"“{text if len(text) <= limit else text[: limit - 1] + '…'}”"
+
+
+def _pages(numbers: list[int]) -> str:
+    shown = [str(n + 1) for n in numbers[:10]]
+    if len(numbers) > 10:
+        return f"pages {', '.join(shown)} and {len(numbers) - 10} more"
+    if len(shown) == 1:
+        return f"page {shown[0]}"
+    return f"pages {', '.join(shown[:-1])} and {shown[-1]}"
 
 
 def _segments(item: tuple) -> list[tuple[pymupdf.Point, pymupdf.Point]]:
@@ -182,13 +205,77 @@ class _PageVerifier:
         return []
 
 
+def residual_checks(
+    doc: pymupdf.Document, terms: Iterable[str], overlays: Iterable[str]
+) -> list[Check]:
+    """Search the whole output for strings that were marked from search or detection results.
+
+    A remaining occurrence is a warning rather than a failure: the user may have chosen to keep it.
+    Words hyphenated across lines in either the term or the page are also compared joined up.
+    Overlay texts written by the redaction are ignored.
+    """
+    variants: dict[str, set[str]] = {}
+    for term in terms:
+        forms = {_fold(term), _fold(_LINE_HYPHEN.sub("", normalize(term)))} - {""}
+        if forms:
+            variants.setdefault(" ".join(term.split()), set()).update(forms)
+    if not variants:
+        return []
+    masks = sorted({_fold(o) for o in overlays} - {""}, key=len, reverse=True)
+    texts: list[str] = []
+    for page in doc:
+        payload = [{"chars": list(line)} for line in line_texts(page)]
+        parts = []
+        for index in page_indexes(payload):
+            text = _fold(index.text)
+            for mask in masks:
+                text = text.replace(mask, "\0")
+            parts.append(text)
+        texts.append("\0".join(parts))
+
+    found = [
+        (term, [n for n, text in enumerate(texts) if any(f in text for f in forms)])
+        for term, forms in variants.items()
+    ]
+    found = [(term, where) for term, where in found if where]
+    if not found:
+        count = f"{len(variants)} text{'s' if len(variants) != 1 else ''} checked"
+        return [
+            Check(
+                "residual-text",
+                "pass",
+                f"Marked search results appear nowhere else in the file ({count})",
+            )
+        ]
+    checks = [
+        Check(
+            "residual-text",
+            "warn",
+            f"Marked search result {_quote(term)} still appears on {_pages(where)}",
+            where[0] if len(where) == 1 else None,
+        )
+        for term, where in found[:MAX_RESIDUAL_CHECKS]
+    ]
+    if len(found) > MAX_RESIDUAL_CHECKS:
+        rest = len(found) - MAX_RESIDUAL_CHECKS
+        checks.append(
+            Check("residual-text", "warn", f"{rest} more marked search result texts still appear")
+        )
+    return checks
+
+
 def verify_bytes(
     data: bytes,
     marks: Iterable[Mark],
     options: RedactOptions | None = None,
     password: str | None = None,
+    search_terms: Iterable[str] = (),
 ) -> Verification:
+    """Verify a redacted file. `search_terms` are texts marked from search results, which must
+    not appear anywhere else in the file."""
     options = options or RedactOptions()
+    marks = list(marks)
+    search_terms = list(search_terms)
     result = Verification()
     revisions = data.count(b"startxref")
     result.checks.append(
@@ -207,4 +294,7 @@ def verify_bytes(
         for pno in sorted(by_page):
             verifier = _PageVerifier(doc, doc[pno], by_page[pno], options)
             result.checks += [verifier.verify(m) for m in by_page[pno]]
+        if search_terms:
+            overlays = [m.appearance.overlay_text for m in marks]
+            result.checks += residual_checks(doc, search_terms, overlays)
     return result

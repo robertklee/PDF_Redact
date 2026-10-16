@@ -11,7 +11,8 @@ from pdf_redact.core.redact import (
     fit_font_size,
     redact_bytes,
 )
-from pdf_redact.core.text import extract_lines
+from pdf_redact.core.search import compile_query, find
+from pdf_redact.core.text import extract_lines, line_texts, page_text_payload
 from pdf_redact.core.verify import verify_bytes
 from tests import corpus
 from tests.corpus import ABOVE, BELOW, SECRET
@@ -263,6 +264,73 @@ def test_verification_flags_unredacted_text() -> None:
     result = verify_bytes(data, marks)
     assert not result.passed
     assert "text character" in result.checks[-1].message
+
+
+def _search_marks(data: bytes, query: str, pages=None, overlay: str = ""):
+    """Marks for every hit of `query`, as the UI makes them from search results, and hit texts."""
+    marks, terms = [], []
+    pattern = compile_query(query, "phrase", False)
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        for page in doc:
+            if pages is not None and page.number not in pages:
+                continue
+            for i, hit in enumerate(find(page.number, page_text_payload(page)["lines"], pattern)):
+                marks.append(text_mark(hit.rects, page.number, f"s{page.number}-{i}", overlay))
+                terms.append(hit.text)
+    return marks, terms
+
+
+def _residual(verification):
+    return [c for c in verification.checks if c.name == "residual-text"]
+
+
+def test_residual_check_reports_unmarked_occurrences() -> None:
+    data = corpus.personal_info()
+    marks, terms = _search_marks(data, SECRET, pages={0})
+    out, _ = redact_bytes(data, marks)
+    result = verify_bytes(out, marks, search_terms=terms)
+    assert result.passed
+    [check] = _residual(result)
+    assert check.status == "warn" and check.page == 1
+    assert check.message == f"Marked search result “{SECRET}” still appears on page 2"
+
+    marks, terms = _search_marks(data, SECRET)
+    out, _ = redact_bytes(data, marks)
+    [check] = _residual(verify_bytes(out, marks, search_terms=terms))
+    assert check.status == "pass"
+    assert check.message == "Marked search results appear nowhere else in the file (1 text checked)"
+    assert not _residual(verify_bytes(out, marks))
+
+
+def test_residual_check_handles_line_hyphenation() -> None:
+    data = corpus.personal_info()
+    marks, terms = _search_marks(data, "international")
+    assert terms == ["inter- national"]
+    [check] = _residual(verify_bytes(data, marks, search_terms=terms))
+    assert check.status == "warn" and check.page == 0
+    for term in ("international", "INTER-NATIONAL"):
+        assert _residual(verify_bytes(data, [], search_terms=[term]))[0].status == "warn"
+
+    out, _ = redact_bytes(data, marks)
+    assert _residual(verify_bytes(out, marks, search_terms=terms))[0].status == "pass"
+
+
+def test_residual_check_ignores_overlay_text() -> None:
+    data = corpus.personal_info()
+    marks, _ = _search_marks(data, SECRET, overlay="SECRET")
+    out, _ = redact_bytes(data, marks)
+    assert mupdf_text(out).count("SECRET") == 2
+    assert _residual(verify_bytes(out, marks, search_terms=["Secret"]))[0].status == "pass"
+    [check] = _residual(verify_bytes(out, [], search_terms=["Secret"]))
+    assert check.message == "Marked search result “Secret” still appears on pages 1 and 2"
+
+
+@pytest.mark.parametrize("name", sorted(set(corpus.FIXTURES) - {"encrypted"}))
+def test_line_texts_match_extracted_lines(name: str) -> None:
+    with pymupdf.open(stream=corpus.FIXTURES[name](), filetype="pdf") as doc:
+        for page in doc:
+            lines = ["".join(ch.c for ch in line) for line in extract_lines(page)]
+            assert [t for t in line_texts(page) if t] == lines
 
 
 def test_overlay_text_and_fill_colour() -> None:

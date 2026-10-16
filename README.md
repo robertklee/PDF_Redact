@@ -28,7 +28,8 @@ See [PLAN.md](PLAN.md) for the feature specification and milestones.
 - **Apply**: choose how images and vector graphics under marks are handled, then download a redacted
   copy. The original file is never modified. Each result is verified (no text, image pixels or
   earlier file revisions left under any mark); downloading a file that fails verification needs
-  explicit confirmation.
+  explicit confirmation. Text marked from search results is also searched for across the whole
+  output, with a warning for any occurrence that was left unmarked.
 
 ## Requirements
 

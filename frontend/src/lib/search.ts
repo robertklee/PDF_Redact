@@ -28,6 +28,16 @@ export function coveredHits(hits: SearchMatch[], marks: Mark[]): Set<number> {
 }
 
 /** Hit indexes grouped by page, in page order. */
+/** Distinct texts of marks made from search or detection results, for the post-apply check. */
+export function searchTerms(marks: Mark[]): string[] {
+  const terms = new Set<string>();
+  for (const m of marks) {
+    const text = m.text?.trim();
+    if (text && m.kind === "text" && (m.source === "search" || m.source === "detect")) terms.add(text);
+  }
+  return [...terms];
+}
+
 export function groupByPage(hits: SearchMatch[]): [number, number[]][] {
   const groups = new Map<number, number[]>();
   hits.forEach((hit, i) => groups.set(hit.page, [...(groups.get(hit.page) ?? []), i]));

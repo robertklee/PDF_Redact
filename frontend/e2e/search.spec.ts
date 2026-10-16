@@ -1,12 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { applyAndDownload, inspectPdf, marks, openPdf, SECRET } from "./helpers.ts";
 
-const status = (page: import("@playwright/test").Page) => page.locator(".results-header [role=status]");
+const status = (page: Page) => page.locator(".results-header [role=status]");
+
+/** Open the search panel with the keyboard and wait until typing goes into the search box. */
+async function openSearch(page: Page) {
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(page.getByRole("searchbox", { name: "Find text" })).toBeFocused();
+}
 
 test("finds text on every page and redacts all hits", async ({ page }, info) => {
   await openPdf(page, "personal_info");
-  await page.keyboard.press("ControlOrMeta+f");
-  await expect(page.getByRole("searchbox", { name: "Find text" })).toBeFocused();
+  await openSearch(page);
   await page.keyboard.type(SECRET.toLowerCase());
   await page.keyboard.press("Enter");
   await expect(status(page)).toHaveText("2 results on 2 pages");
@@ -25,9 +30,26 @@ test("finds text on every page and redacts all hits", async ({ page }, info) => 
   expect(result.pages[1]).toContain("Card on file");
 });
 
+test("warns when a marked search result still appears elsewhere", async ({ page }) => {
+  await openPdf(page, "personal_info");
+  await openSearch(page);
+  await page.keyboard.type(SECRET);
+  await page.keyboard.press("Enter");
+  await page.getByRole("checkbox", { name: "Select results on page 2" }).uncheck();
+  await page.getByRole("button", { name: "Mark 1 selected" }).click();
+
+  await page.getByRole("button", { name: "Apply 1 redaction…" }).click();
+  await page.getByRole("button", { name: "Apply redactions" }).click();
+  await expect(page.locator(".verdict")).toHaveText("Marked text was removed. 1 warning to review.");
+  await expect(page.locator(".check.warn")).toContainText(
+    `Page 2Marked search result “${SECRET}” still appears on page 2`,
+  );
+  await expect(page.getByRole("button", { name: /^Download/ })).toBeEnabled();
+});
+
 test("matches a word hyphenated across lines", async ({ page }, info) => {
   await openPdf(page, "personal_info");
-  await page.keyboard.press("ControlOrMeta+f");
+  await openSearch(page);
   await page.keyboard.type("international");
   await page.keyboard.press("Enter");
   await expect(status(page)).toHaveText("1 result on 1 page");
@@ -79,7 +101,7 @@ test("detects personal information and redacts the chosen hits", async ({ page }
 
 test("reports invalid patterns and page ranges", async ({ page }) => {
   await openPdf(page, "personal_info");
-  await page.keyboard.press("ControlOrMeta+f");
+  await openSearch(page);
   await page.getByRole("checkbox", { name: "Regex" }).check();
   await page.getByRole("searchbox", { name: "Find text" }).fill("[unclosed");
   await page.getByRole("searchbox", { name: "Find text" }).press("Enter");

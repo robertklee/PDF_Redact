@@ -292,7 +292,7 @@ def apply_redactions(document_id: str, body: ApplyRequest, store: StoreDep) -> O
             out, stats = redact_bytes(data, marks, options, document.password)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
-        verification = verify_bytes(out, marks, options, document.password)
+        verification = verify_bytes(out, marks, options, document.password, body.search_terms)
 
     path = store.new_path()
     path.write_bytes(out)
