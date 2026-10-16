@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { type Tool, useMarks } from "../marks";
+import { ApplyDialog } from "./ApplyDialog";
 import { PageMarkDialog } from "./PageMarkDialog";
 
 const TOOLS: { tool: Tool; label: string; key: string; title: string }[] = [
@@ -21,7 +22,9 @@ export function RedactionBar() {
   const redo = useMarks((s) => s.redo);
   const preview = useMarks((s) => s.preview);
   const togglePreview = useMarks((s) => s.togglePreview);
-  const [pageDialog, setPageDialog] = useState(false);
+  const markCount = useMarks((s) => s.marks.length);
+  const [dialog, setDialog] = useState<"pages" | "apply" | null>(null);
+  const closeDialog = () => setDialog(null);
 
   return (
     <div className="toolbar redaction-bar" role="toolbar" aria-label="Redaction tools">
@@ -39,7 +42,7 @@ export function RedactionBar() {
           </button>
         ))}
       </div>
-      <button onClick={() => setPageDialog(true)} title="Mark whole pages">
+      <button onClick={() => setDialog("pages")} title="Mark whole pages">
         Mark pages…
       </button>
       <div className="group">
@@ -53,7 +56,17 @@ export function RedactionBar() {
       <label className="toggle" title="Show every mark as it will look once applied">
         <input type="checkbox" checked={preview} onChange={togglePreview} /> Preview
       </label>
-      {pageDialog && <PageMarkDialog onClose={() => setPageDialog(false)} />}
+      <span className="spacer" />
+      <button
+        className="danger"
+        onClick={() => setDialog("apply")}
+        disabled={!markCount}
+        title="Remove the marked content and save a redacted copy"
+      >
+        Apply {markCount > 0 && `${markCount} `}redaction{markCount === 1 ? "" : "s"}…
+      </button>
+      {dialog === "pages" && <PageMarkDialog onClose={closeDialog} />}
+      {dialog === "apply" && <ApplyDialog onClose={closeDialog} />}
     </div>
   );
 }

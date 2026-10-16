@@ -1,21 +1,8 @@
 import { type MouseEvent, useEffect, useMemo, useRef } from "react";
 import { useMarks } from "../marks";
 import { useStore } from "../store";
+import { describeMark, KIND_LABELS } from "../lib/format";
 import type { Mark } from "../types";
-
-const EXCERPT_LENGTH = 60;
-
-function describe(mark: Mark): string {
-  if (mark.kind === "page") return "Whole page";
-  if (mark.kind === "text") {
-    const text = (mark.text ?? "").replace(/\s+/g, " ");
-    return text.length > EXCERPT_LENGTH ? `“${text.slice(0, EXCERPT_LENGTH)}…”` : `“${text}”`;
-  }
-  const [x0, y0, x1, y1] = mark.rects[0];
-  return `${Math.round(x1 - x0)} × ${Math.round(y1 - y0)} pt`;
-}
-
-const KIND_LABELS = { text: "Text", area: "Area", page: "Page" } as const;
 
 /** Top-to-bottom, then left-to-right position of a mark on its page. */
 const position = (m: Mark) => (m.kind === "page" ? [-1, -1] : [m.rects[0][1], m.rects[0][0]]);
@@ -99,7 +86,7 @@ export function MarksPanel() {
                   >
                     <span className={`kind kind-${m.kind}`}>{KIND_LABELS[m.kind]}</span>
                     <span className="mark-desc" title={m.text}>
-                      {describe(m)}
+                      {describeMark(m)}
                     </span>
                     {m.appearance.overlayText.trim() && (
                       <span className="overlay-badge" title="Overlay text">
