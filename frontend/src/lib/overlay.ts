@@ -10,6 +10,8 @@ export const PADDING = 1;
 export const MIN_FONT_SIZE = 4;
 export const MAX_AUTO_FONT_SIZE = 24;
 const REPEAT_SEPARATOR = " ";
+/** Longest overlay text the server accepts. */
+export const MAX_OVERLAY_TEXT = 200;
 
 interface FontMetrics {
   label: string;

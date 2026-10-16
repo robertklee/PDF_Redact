@@ -1,7 +1,10 @@
 import { useState } from "react";
-import { FONT_OPTIONS, overlayDoesNotFit, unsupportedChars } from "../lib/overlay";
+import { activeCodeSet, allCodeSets, useCodeSets } from "../codeSets";
+import { hasCode, toggleCode } from "../lib/codes";
+import { FONT_OPTIONS, MAX_OVERLAY_TEXT, overlayDoesNotFit, unsupportedChars } from "../lib/overlay";
 import { useMarks } from "../marks";
 import type { Align, Appearance, OverlayFont } from "../types";
+import { CodeSetsDialog } from "./CodeSetsDialog";
 
 const MIXED = Symbol("mixed");
 type Field<T> = T | typeof MIXED;
@@ -24,7 +27,10 @@ export function PropertiesPanel() {
   const defaults = useMarks((s) => s.defaults);
   const setAppearance = useMarks((s) => s.setAppearance);
   const setDefaults = useMarks((s) => s.setDefaults);
+  const codeSets = useCodeSets();
+  const codeSet = activeCodeSet(codeSets);
   const [sizeDraft, setSizeDraft] = useState<string | null>(null);
+  const [managingCodes, setManagingCodes] = useState(false);
 
   const ids = new Set(selection);
   const targets = marks.filter((m) => ids.has(m.id));
@@ -43,6 +49,24 @@ export function PropertiesPanel() {
     if (editingDefaults) setDefaults(patch);
     else setAppearance(selection, patch, key && `${key}:${selection.join(",")}`);
   }
+
+  const order = codeSet.codes.map((c) => c.code);
+  /** Pressed if every target has the code, mixed if only some do. */
+  function codeState(code: string): boolean | "mixed" {
+    const n = items.filter((a) => hasCode(a.overlayText, code)).length;
+    return n === items.length ? true : n === 0 ? false : "mixed";
+  }
+  function setCode(code: string, on: boolean) {
+    const next = (a: Appearance) => toggleCode(a.overlayText, code, on, order);
+    if (editingDefaults) setDefaults({ overlayText: next(defaults) });
+    else {
+      useMarks
+        .getState()
+        .updateMarks(selection, (m) => ({ ...m, appearance: { ...m.appearance, overlayText: next(m.appearance) } }));
+    }
+  }
+  const tooLong = (code: string) =>
+    items.some((a) => toggleCode(a.overlayText, code, true, order).length > MAX_OVERLAY_TEXT);
 
   const unsupported = overlayText === MIXED ? [] : unsupportedChars(overlayText);
   const sizeValue = sizeDraft ?? (fontSize === MIXED || fontSize === null ? "" : String(fontSize));
@@ -96,12 +120,56 @@ export function PropertiesPanel() {
           <span>Overlay text</span>
           <input
             type="text"
-            maxLength={200}
+            maxLength={MAX_OVERLAY_TEXT}
             value={overlayText === MIXED ? "" : overlayText}
             placeholder={overlayText === MIXED ? "Mixed" : "None"}
             onChange={(e) => apply({ overlayText: e.target.value }, "overlayText")}
           />
         </label>
+        <div className="row">
+          <span>Codes</span>
+          <select
+            aria-label="Code set"
+            value={codeSet.id}
+            onChange={(e) => codeSets.setActive(e.target.value)}
+          >
+            {allCodeSets(codeSets.custom).map((set) => (
+              <option key={set.id} value={set.id}>
+                {set.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {codeSet.codes.length > 0 ? (
+          <div className="code-picker" role="group" aria-label={codeSet.name}>
+            {codeSet.codes.map(({ code, description }) => {
+              const state = codeState(code);
+              const blocked = state !== true && tooLong(code);
+              return (
+                <button
+                  key={code}
+                  className="code-toggle"
+                  aria-pressed={state}
+                  disabled={blocked}
+                  title={blocked ? "The overlay text would be too long" : description}
+                  onClick={() => setCode(code, state !== true)}
+                >
+                  {code}
+                </button>
+              );
+            })}
+            <button className="link manage-codes" onClick={() => setManagingCodes(true)}>
+              Manage…
+            </button>
+          </div>
+        ) : (
+          <p className="hint">
+            This code set is empty.{" "}
+            <button className="link manage-codes" onClick={() => setManagingCodes(true)}>
+              Manage…
+            </button>
+          </p>
+        )}
         {unsupported.length > 0 && (
           <p className="hint warning">
             The overlay font cannot show {unsupported.join(" ")}; use Latin characters.
@@ -193,6 +261,7 @@ export function PropertiesPanel() {
         )}
         <p className="hint">Hover a mark, or turn on Preview, to see how it will look.</p>
       </div>
+      {managingCodes && <CodeSetsDialog onClose={() => setManagingCodes(false)} />}
     </section>
   );
 }

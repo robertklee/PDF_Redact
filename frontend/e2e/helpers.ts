@@ -81,6 +81,24 @@ export function inspectPdf(path: string, password = ""): PdfSummary {
   return JSON.parse(execFileSync(PYTHON, ["-c", script, path, password], { encoding: "utf8" }));
 }
 
+export interface Span {
+  page: number;
+  text: string;
+  font: string;
+  size: number;
+}
+
+/** Text spans with their fonts, read with PyMuPDF. */
+export function textSpans(path: string): Span[] {
+  const script = [
+    "import json, sys, pymupdf",
+    "d = pymupdf.open(sys.argv[1])",
+    "print(json.dumps([{'page': p.number, 'text': s['text'], 'font': s['font'], 'size': s['size']}",
+    "  for p in d for b in p.get_text('dict')['blocks'] for l in b.get('lines', []) for s in l['spans']]))",
+  ].join("\n");
+  return JSON.parse(execFileSync(PYTHON, ["-c", script, path], { encoding: "utf8" }));
+}
+
 /** Apply all marks with default options, check verification passed and save the download. */
 export async function applyAndDownload(page: Page, path: string) {
   await page.getByRole("button", { name: /^Apply \d+ redactions?…$/ }).click();

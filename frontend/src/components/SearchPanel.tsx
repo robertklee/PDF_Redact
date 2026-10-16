@@ -1,4 +1,5 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { saveTextFile } from "../lib/files";
 import { plural } from "../lib/format";
 import { parsePageRanges } from "../lib/pages";
 import {
@@ -197,13 +198,7 @@ function DetectFields() {
   }
 
   function saveList() {
-    const json = serializeDetectList({ keywords: parseKeywords(keywords), patterns });
-    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "redaction-terms.json";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    saveTextFile("redaction-terms.json", serializeDetectList({ keywords: parseKeywords(keywords), patterns }));
   }
 
   return (

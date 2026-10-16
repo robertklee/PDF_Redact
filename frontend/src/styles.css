@@ -1095,3 +1095,108 @@ button.hit-text:hover:not(:disabled) {
   stroke-dasharray: none;
   vector-effect: non-scaling-stroke;
 }
+
+/* Redaction codes */
+
+.code-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.code-toggle {
+  padding: 1px 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border-radius: 4px;
+}
+
+.manage-codes {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.code-toggle[aria-pressed="true"] {
+  background: #dbeafe;
+  border-color: var(--accent);
+  color: #1e3a8a;
+}
+
+.code-toggle[aria-pressed="mixed"] {
+  background: repeating-linear-gradient(135deg, #dbeafe 0 4px, #fff 4px 8px);
+  border-color: var(--accent);
+}
+
+.form .row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.code-sets-dialog {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.code-sets-layout {
+  display: flex;
+  gap: 16px;
+  min-height: 280px;
+}
+
+.code-sets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.code-sets-list select {
+  padding: 2px;
+  cursor: default;
+}
+
+.code-set-editor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow: auto;
+}
+
+.codes-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.codes-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 2px 4px;
+}
+
+.codes-table td {
+  padding: 2px 4px;
+  vertical-align: top;
+}
+
+.codes-table td input {
+  width: 100%;
+}
+
+.codes-table .code-cell {
+  width: 110px;
+  white-space: nowrap;
+}
+
+.codes-table button.icon {
+  visibility: visible;
+}
+
+.add-code {
+  align-self: flex-start;
+}

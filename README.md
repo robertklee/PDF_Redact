@@ -23,8 +23,12 @@ See [PLAN.md](PLAN.md) for the feature specification and milestones.
 - **Personal info**: detect SSNs, EINs, phone numbers, emails, payment cards (Luhn-checked), IBANs,
   IP addresses, passport and driver's license numbers, US street addresses and (opt-in) dates, plus
   your own keywords and named regular expressions. Pattern lists can be saved and loaded as JSON.
-- Appearance: fill colour (or none), overlay text such as `(b)(6)`, text colour, size and alignment.
-  Hover over a mark, or turn on **Preview**, to see how it will look.
+- Appearance: fill colour (or none), overlay text, text colour, font (Helvetica, Times or Courier),
+  size (auto-fit by default), alignment, and repeating the text to fill the box. Hover over a mark, or
+  turn on **Preview**, to see exactly how it will look in the output. Set the defaults for new marks
+  with nothing selected.
+- **Redaction codes**: click codes such as FOIA `(b)(6)` or Privacy Act `(k)(5)` to add them to the
+  overlay text of the selected marks. Create your own code sets, and import or export them as JSON.
 - **Apply**: choose how images and vector graphics under marks are handled, then download a redacted
   copy. The original file is never modified. Each result is verified (no text, image pixels or
   earlier file revisions left under any mark); downloading a file that fails verification needs
