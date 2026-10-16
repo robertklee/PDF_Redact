@@ -37,6 +37,8 @@ class AppearanceIn(ApiModel):
     overlay_text: str = Field(default="", max_length=200)
     font_size: float | None = Field(default=None, ge=4, le=72)
     align: Literal["left", "center", "right"] = "center"
+    font: Literal["helv", "tiro", "cour"] = "helv"
+    repeat: bool = False
 
     def to_engine(self) -> Appearance:
         return Appearance(
@@ -45,6 +47,8 @@ class AppearanceIn(ApiModel):
             overlay_text=self.overlay_text,
             font_size=self.font_size,
             align=self.align,
+            font=self.font,
+            repeat=self.repeat,
         )
 
 
@@ -132,6 +136,7 @@ class StatsOut(ApiModel):
     glyphs_removed: int
     text_marks_as_area: list[str]
     safety_pass_glyphs: int
+    overlays_skipped: list[str]
 
 
 class OutputOut(ApiModel):

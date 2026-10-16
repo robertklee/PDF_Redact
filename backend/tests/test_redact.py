@@ -8,7 +8,6 @@ from pdf_redact.core.redact import (
     Appearance,
     Mark,
     RedactOptions,
-    fit_font_size,
     redact_bytes,
 )
 from pdf_redact.core.search import compile_query, find
@@ -352,13 +351,6 @@ def test_overlay_text_and_fill_colour() -> None:
 def test_mark_on_missing_page_rejected() -> None:
     with pytest.raises(ValueError):
         redact_bytes(corpus.text_basic(), [area_mark((0, 0, 10, 10), page=5)])
-
-
-def test_fit_font_size() -> None:
-    assert fit_font_size("(b)(6)", 100, 14, None) == pytest.approx(14 / 1.4, abs=0.01)
-    assert fit_font_size("(b)(6)", 100, 100, None) == 24
-    assert fit_font_size("(b)(6)", 100, 100, 8) == 8
-    assert fit_font_size("(b)(6)", 8, 14, None) is None
 
 
 def test_display_space_roundtrip_matches_rotation() -> None:

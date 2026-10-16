@@ -1,0 +1,703 @@
+[
+  {
+    "name": "text line, centred",
+    "rect": [
+      72.0,
+      90.0,
+      160.0,
+      104.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": 0,
+    "layout": {
+      "angle": 0,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 103.78,
+          "y": 100.88
+        }
+      ]
+    }
+  },
+  {
+    "name": "text line, left",
+    "rect": [
+      72.0,
+      90.0,
+      160.0,
+      104.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "left",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": 0,
+    "layout": {
+      "angle": 0,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 73.0,
+          "y": 100.88
+        }
+      ]
+    }
+  },
+  {
+    "name": "text line, right",
+    "rect": [
+      72.0,
+      90.0,
+      160.0,
+      104.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "right",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": 0,
+    "layout": {
+      "angle": 0,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 134.56,
+          "y": 100.88
+        }
+      ]
+    }
+  },
+  {
+    "name": "Times",
+    "rect": [
+      72.0,
+      90.0,
+      160.0,
+      104.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "tiro",
+      "repeat": false
+    },
+    "angle": 0,
+    "layout": {
+      "angle": 0,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 104.34,
+          "y": 100.86
+        }
+      ]
+    }
+  },
+  {
+    "name": "Courier",
+    "rect": [
+      72.0,
+      90.0,
+      160.0,
+      104.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "cour",
+      "repeat": false
+    },
+    "angle": 0,
+    "layout": {
+      "angle": 0,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 98.0,
+          "y": 100.07
+        }
+      ]
+    }
+  },
+  {
+    "name": "several codes",
+    "rect": [
+      50.0,
+      50.0,
+      350.0,
+      250.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6), (b)(7)(C)",
+      "fontSize": null,
+      "align": "center",
+      "font": "tiro",
+      "repeat": false
+    },
+    "angle": null,
+    "layout": {
+      "angle": 0,
+      "size": 24.0,
+      "lines": [
+        {
+          "text": "(b)(6), (b)(7)(C)",
+          "x": 122.04,
+          "y": 159.26
+        }
+      ]
+    }
+  },
+  {
+    "name": "area, auto size capped",
+    "rect": [
+      50.0,
+      50.0,
+      350.0,
+      250.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": null,
+    "layout": {
+      "angle": 0,
+      "size": 24.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 170.67,
+          "y": 159.31
+        }
+      ]
+    }
+  },
+  {
+    "name": "requested size",
+    "rect": [
+      50.0,
+      50.0,
+      350.0,
+      250.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": 10,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": null,
+    "layout": {
+      "angle": 0,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 187.78,
+          "y": 153.88
+        }
+      ]
+    }
+  },
+  {
+    "name": "requested size too large",
+    "rect": [
+      72.0,
+      90.0,
+      160.0,
+      104.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": 40,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": 0,
+    "layout": {
+      "angle": 0,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 103.78,
+          "y": 100.88
+        }
+      ]
+    }
+  },
+  {
+    "name": "tall narrow box turns text",
+    "rect": [
+      10.0,
+      10.0,
+      30.0,
+      200.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": null,
+    "layout": {
+      "angle": 90,
+      "size": 14.28,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 25.54,
+          "y": 122.45
+        }
+      ]
+    }
+  },
+  {
+    "name": "text written downwards",
+    "rect": [
+      100.0,
+      50.0,
+      114.0,
+      150.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": 270,
+    "layout": {
+      "angle": 270,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 103.12,
+          "y": 87.78
+        }
+      ]
+    }
+  },
+  {
+    "name": "upside-down text",
+    "rect": [
+      72.0,
+      90.0,
+      160.0,
+      104.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": 180,
+    "layout": {
+      "angle": 180,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 128.22,
+          "y": 93.12
+        }
+      ]
+    }
+  },
+  {
+    "name": "small box turns text",
+    "rect": [
+      0.0,
+      0.0,
+      8.0,
+      14.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": null,
+    "layout": {
+      "angle": 90,
+      "size": 4.9,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 5.9,
+          "y": 12.99
+        }
+      ]
+    }
+  },
+  {
+    "name": "too small",
+    "rect": [
+      0.0,
+      0.0,
+      6.0,
+      6.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": null,
+    "layout": null
+  },
+  {
+    "name": "blank text",
+    "rect": [
+      72.0,
+      90.0,
+      160.0,
+      104.0
+    ],
+    "appearance": {
+      "overlayText": "   ",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": 0,
+    "layout": null
+  },
+  {
+    "name": "Latin-1 and fallback characters",
+    "rect": [
+      50.0,
+      50.0,
+      350.0,
+      250.0
+    ],
+    "appearance": {
+      "overlayText": "Ünïcødé — ✓",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": false
+    },
+    "angle": null,
+    "layout": {
+      "angle": 0,
+      "size": 24.0,
+      "lines": [
+        {
+          "text": "Ünïcødé · ·",
+          "x": 141.31,
+          "y": 159.31
+        }
+      ]
+    }
+  },
+  {
+    "name": "repeat in an area",
+    "rect": [
+      50.0,
+      50.0,
+      350.0,
+      250.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": true
+    },
+    "angle": null,
+    "layout": {
+      "angle": 0,
+      "size": 24.0,
+      "lines": [
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 72.68,
+          "y": 92.11
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 72.68,
+          "y": 125.71
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 72.68,
+          "y": 159.31
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 72.68,
+          "y": 192.91
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 72.68,
+          "y": 226.51
+        }
+      ]
+    }
+  },
+  {
+    "name": "repeat, 10 pt, left",
+    "rect": [
+      50.0,
+      50.0,
+      350.0,
+      250.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": 10,
+      "align": "left",
+      "font": "helv",
+      "repeat": true
+    },
+    "angle": null,
+    "layout": {
+      "angle": 0,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 62.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 76.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 90.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 104.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 118.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 132.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 146.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 160.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 174.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 188.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 202.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 216.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 230.88
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 51.0,
+          "y": 244.88
+        }
+      ]
+    }
+  },
+  {
+    "name": "repeat, Courier, right",
+    "rect": [
+      50.0,
+      50.0,
+      350.0,
+      250.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "right",
+      "font": "cour",
+      "repeat": true
+    },
+    "angle": null,
+    "layout": {
+      "angle": 0,
+      "size": 24.0,
+      "lines": [
+        {
+          "text": "(b)(6) (b)(6) (b)(6)",
+          "x": 61.0,
+          "y": 90.18
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6)",
+          "x": 61.0,
+          "y": 123.78
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6)",
+          "x": 61.0,
+          "y": 157.38
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6)",
+          "x": 61.0,
+          "y": 190.98
+        },
+        {
+          "text": "(b)(6) (b)(6) (b)(6)",
+          "x": 61.0,
+          "y": 224.58
+        }
+      ]
+    }
+  },
+  {
+    "name": "repeat along a text line",
+    "rect": [
+      72.0,
+      90.0,
+      300.0,
+      104.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": true
+    },
+    "angle": 0,
+    "layout": {
+      "angle": 0,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 78.51,
+          "y": 100.88
+        }
+      ]
+    }
+  },
+  {
+    "name": "repeat, vertical",
+    "rect": [
+      10.0,
+      10.0,
+      30.0,
+      200.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": true
+    },
+    "angle": null,
+    "layout": {
+      "angle": 90,
+      "size": 14.28,
+      "lines": [
+        {
+          "text": "(b)(6) (b)(6) (b)(6) (b)(6)",
+          "x": 25.54,
+          "y": 180.76
+        }
+      ]
+    }
+  },
+  {
+    "name": "repeat, one copy only",
+    "rect": [
+      0.0,
+      0.0,
+      40.0,
+      14.0
+    ],
+    "appearance": {
+      "overlayText": "(b)(6)",
+      "fontSize": null,
+      "align": "center",
+      "font": "helv",
+      "repeat": true
+    },
+    "angle": 0,
+    "layout": {
+      "angle": 0,
+      "size": 10.0,
+      "lines": [
+        {
+          "text": "(b)(6)",
+          "x": 7.78,
+          "y": 10.88
+        }
+      ]
+    }
+  }
+]

@@ -12,6 +12,7 @@ from typing import Literal
 import pymupdf
 
 from .geometry import contains_point, inset, overlaps, segment_intersects_rect, touches
+from .overlay import drawable
 from .redact import Mark, RedactOptions, mark_regions, open_pdf
 from .search import normalize, page_indexes
 from .text import extract_lines, line_texts
@@ -111,9 +112,9 @@ class _PageVerifier:
         self.chars = [ch for line in extract_lines(page) for ch in line]
         self.overlays = sorted(
             {
-                _squash(m.appearance.overlay_text)
+                _squash(drawable(m.appearance.overlay_text))
                 for m in marks
-                if m.appearance.overlay_text.strip()
+                if drawable(m.appearance.overlay_text)
             },
             key=len,
             reverse=True,
@@ -295,6 +296,6 @@ def verify_bytes(
             verifier = _PageVerifier(doc, doc[pno], by_page[pno], options)
             result.checks += [verifier.verify(m) for m in by_page[pno]]
         if search_terms:
-            overlays = [m.appearance.overlay_text for m in marks]
+            overlays = [drawable(m.appearance.overlay_text) for m in marks]
             result.checks += residual_checks(doc, search_terms, overlays)
     return result

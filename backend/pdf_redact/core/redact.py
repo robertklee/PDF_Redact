@@ -25,12 +25,12 @@ from typing import Literal
 import pymupdf
 
 from .geometry import contains_point, page_area, to_unrotated, union
+from .overlay import DIRECTIONS, Appearance, drawable, layout_overlay
 from .text import Char, extract_lines
 
 MarkKind = Literal["text", "area", "page"]
 ImageMode = Literal["pixels", "remove", "none"]
 GraphicsMode = Literal["covered", "touched", "none"]
-Color = tuple[float, float, float]
 
 IMAGE_MODES: dict[str, int] = {
     "pixels": pymupdf.PDF_REDACT_IMAGE_PIXELS,
@@ -43,26 +43,10 @@ GRAPHICS_MODES: dict[str, int] = {
     "none": pymupdf.PDF_REDACT_LINE_ART_NONE,
 }
 
-OVERLAY_FONT = "helv"
-_OVERLAY_METRICS = pymupdf.Font(OVERLAY_FONT)
-# Ascender-to-descender height of the overlay font, plus a little breathing room.
-OVERLAY_LINE_HEIGHT = 1.4
-OVERLAY_PADDING = 1.0
-MIN_OVERLAY_FONT_SIZE = 4.0
-MAX_AUTO_FONT_SIZE = 24.0
 # Tolerance (points) when deciding whether a glyph centre lies inside a text mark.
 SELECT_TOLERANCE = 0.5
 # Removal band through each glyph, as fractions of the font size above the baseline.
 BAND_LOW, BAND_HIGH = 0.30, 0.45
-
-
-@dataclass
-class Appearance:
-    fill: Color | None = (0.0, 0.0, 0.0)
-    text_color: Color = (1.0, 1.0, 1.0)
-    overlay_text: str = ""
-    font_size: float | None = None  # None = auto-fit to the box
-    align: Literal["left", "center", "right"] = "center"
 
 
 @dataclass
@@ -90,16 +74,8 @@ class RedactStats:
     text_marks_as_area: list[str] = field(default_factory=list)
     # Glyphs that survived the band pass and were removed by the safety pass.
     safety_pass_glyphs: int = 0
-
-
-def fit_font_size(text: str, width: float, height: float, requested: float | None) -> float | None:
-    """Largest overlay font size (capped by `requested`) that fits on one line, else None."""
-    unit_width = pymupdf.get_text_length(text, fontname=OVERLAY_FONT, fontsize=1)
-    if unit_width <= 0:
-        return None
-    fit = min((width - 2 * OVERLAY_PADDING) / unit_width, height / OVERLAY_LINE_HEIGHT)
-    size = min(fit, requested or MAX_AUTO_FONT_SIZE)
-    return round(size, 2) if size >= MIN_OVERLAY_FONT_SIZE else None
+    # Marks with overlay text that did not fit (in at least one of their boxes).
+    overlays_skipped: list[str] = field(default_factory=list)
 
 
 def mark_regions(page: pymupdf.Page, mark: Mark) -> list[pymupdf.Rect]:
@@ -158,17 +134,13 @@ def _add_box(page: pymupdf.Page, region: pymupdf.Rect, appearance: Appearance) -
     page.add_redact_annot(region, fill=appearance.fill, cross_out=False)
 
 
-# Overlay writing directions in display space, keyed by counter-clockwise angle (y points down).
-_DIRECTIONS: dict[int, tuple[float, float]] = {0: (1, 0), 90: (0, -1), 180: (-1, 0), 270: (0, 1)}
-
-
 def text_angle(page: pymupdf.Page, chars: Iterable[Char]) -> int | None:
     """Dominant display-space writing angle (0/90/180/270) of the glyphs, if axis-aligned."""
     votes: dict[int, int] = defaultdict(int)
     m = page.rotation_matrix
     for ch in chars:
         d = pymupdf.Point(ch.dir) * m - pymupdf.Point(0, 0) * m
-        for angle, (dx, dy) in _DIRECTIONS.items():
+        for angle, (dx, dy) in DIRECTIONS.items():
             if d.x * dx + d.y * dy > 0.999:
                 votes[angle] += 1
     return max(votes, key=votes.__getitem__) if votes else None
@@ -178,68 +150,37 @@ def text_angle(page: pymupdf.Page, chars: Iterable[Char]) -> int | None:
 class Overlay:
     region: pymupdf.Rect  # unrotated space
     appearance: Appearance
+    mark_id: str
     angle: int | None = None  # display-space writing angle; None = choose from the box shape
 
 
-def _overlay_layout(
-    text: str, shown: pymupdf.Rect, appearance: Appearance, angle: int | None
-) -> tuple[int, float] | None:
-    def fit(a: int) -> float | None:
-        along, across = (
-            (shown.width, shown.height) if a in (0, 180) else (shown.height, shown.width)
-        )
-        return fit_font_size(text, along, across, appearance.font_size)
-
-    if angle is not None:
-        size = fit(angle)
-        return (angle, size) if size else None
-    size, size_vertical = fit(0), fit(90)
-    # Tall, narrow boxes read better with bottom-to-top text.
-    if size_vertical and (size is None or size_vertical > 1.5 * size):
-        return 90, size_vertical
-    return (0, size) if size else None
-
-
-def _draw_overlays(page: pymupdf.Page, overlays: list[Overlay]) -> None:
-    """Write overlay text centred in each box, oriented as seen in the viewer.
+def _draw_overlays(page: pymupdf.Page, overlays: list[Overlay]) -> list[str]:
+    """Write overlay text into each box, oriented as seen in the viewer.
 
     PyMuPDF's built-in overlay ignores /Rotate and needs ~1.7x the font size in height, so we
-    position the text ourselves.
+    position the text ourselves. Returns the ids of marks whose overlay text did not fit.
     """
     shape = page.new_shape()
-    asc, desc = _OVERLAY_METRICS.ascender, _OVERLAY_METRICS.descender
+    skipped: list[str] = []
     for overlay in overlays:
         appearance = overlay.appearance
-        text = appearance.overlay_text.strip()
-        if not text:
-            continue
         shown = overlay.region * page.rotation_matrix
-        layout = _overlay_layout(text, shown, appearance, overlay.angle)
+        layout = layout_overlay(shown, appearance, overlay.angle)
         if layout is None:
+            if drawable(appearance.overlay_text) and overlay.mark_id not in skipped:
+                skipped.append(overlay.mark_id)
             continue
-        angle, size = layout
-        dx, dy = _DIRECTIONS[angle]
-        ux, uy = dy, -dx
-        width = pymupdf.get_text_length(text, fontname=OVERLAY_FONT, fontsize=size)
-        along = abs(shown.width * dx + shown.height * dy)
-        shift = {
-            "left": -along / 2 + OVERLAY_PADDING,
-            "center": -width / 2,
-            "right": along / 2 - OVERLAY_PADDING - width,
-        }[appearance.align]
-        # Baseline sits below the centre line by half the glyph's ascender+descender height.
-        drop = size * (asc + desc) / 2
-        centre = (shown.tl + shown.br) / 2
-        point = pymupdf.Point(centre.x + dx * shift - ux * drop, centre.y + dy * shift - uy * drop)
-        shape.insert_text(
-            point * page.derotation_matrix,
-            text,
-            fontname=OVERLAY_FONT,
-            fontsize=size,
-            color=appearance.text_color,
-            rotate=(page.rotation + angle) % 360,
-        )
+        for line in layout.lines:
+            shape.insert_text(
+                pymupdf.Point(line.x, line.y) * page.derotation_matrix,
+                line.text,
+                fontname=appearance.font,
+                fontsize=layout.size,
+                color=appearance.text_color,
+                rotate=(page.rotation + layout.angle) % 360,
+            )
     shape.commit()
+    return skipped
 
 
 def _remove_glyphs(page: pymupdf.Page, rects: list[pymupdf.Rect]) -> None:
@@ -266,8 +207,8 @@ def redact_page(
 
     text_regions: list[pymupdf.Rect] = []
     covers: list[Overlay] = []
-    # Appearance None = remove content without drawing anything.
-    areas: list[tuple[pymupdf.Rect, Appearance | None]] = []
+    # No owning mark = remove content without drawing anything.
+    areas: list[tuple[pymupdf.Rect, Mark | None]] = []
     lines = extract_lines(page) if any(m.kind == "text" for m in marks) else []
 
     for mark in marks:
@@ -278,10 +219,10 @@ def redact_page(
             if chars:
                 text_regions += regions
                 angle = text_angle(page, chars)
-                covers += [Overlay(r, mark.appearance, angle) for r in regions]
+                covers += [Overlay(r, mark.appearance, mark.id, angle) for r in regions]
                 continue
             stats.text_marks_as_area.append(mark.id)
-        areas += [(r, mark.appearance) for r in regions]
+        areas += [(r, mark) for r in regions]
         if mark.kind == "page":
             # Also strip content hidden outside the CropBox.
             areas.append((_full_extent(page), None))
@@ -301,14 +242,15 @@ def redact_page(
         page.apply_redactions(images=images, graphics=graphics, text=pymupdf.PDF_REDACT_TEXT_NONE)
 
     if areas:
-        for region, appearance in areas:
-            if appearance is None:
+        for region, owner in areas:
+            if owner is None:
                 page.add_redact_annot(region, fill=None, cross_out=False)
             else:
-                _add_box(page, region, appearance)
+                _add_box(page, region, owner.appearance)
         page.apply_redactions(images=images, graphics=graphics, text=pymupdf.PDF_REDACT_TEXT_REMOVE)
 
-    _draw_overlays(page, covers + [Overlay(r, a) for r, a in areas if a is not None])
+    covers += [Overlay(r, m.appearance, m.id) for r, m in areas if m is not None]
+    stats.overlays_skipped += _draw_overlays(page, covers)
 
 
 def apply_marks(
