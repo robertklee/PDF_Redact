@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+*.tsbuildinfo
+
+# Generated sample PDFs and outputs
+backend/samples/
+*.redacted.pdf
+*_redacted.pdf
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
