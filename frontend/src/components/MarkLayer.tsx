@@ -14,7 +14,7 @@ import {
   translate,
   width,
 } from "../lib/geometry";
-import { overlayLayout } from "../lib/overlay";
+import { FONT_FAMILIES, overlayLayout, textWidth } from "../lib/overlay";
 import {
   type Caret,
   caretAt,
@@ -407,18 +407,23 @@ const MarkShape = memo(function MarkShape({ mark, selected, final, hatch }: Shap
               fill={appearance.fill ?? "none"}
               {...box(r)}
             />
-            {layout && (
+            {layout?.lines.map((line, j) => (
               <text
+                key={j}
                 className="mark-overlay"
-                x={layout.x}
-                y={layout.y}
+                x={line.x}
+                y={line.y}
                 fontSize={layout.size}
+                fontFamily={FONT_FAMILIES[appearance.font]}
                 fill={appearance.textColor}
-                transform={layout.angle ? `rotate(${-layout.angle} ${layout.x} ${layout.y})` : undefined}
+                // Stretch the browser's font to the PDF font's width so the preview matches the output.
+                textLength={textWidth(line.text, layout.size, appearance.font)}
+                lengthAdjust="spacingAndGlyphs"
+                transform={layout.angle ? `rotate(${-layout.angle} ${line.x} ${line.y})` : undefined}
               >
-                {layout.text}
+                {line.text}
               </text>
-            )}
+            ))}
           </g>
         );
       })}

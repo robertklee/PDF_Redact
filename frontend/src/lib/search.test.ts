@@ -27,7 +27,7 @@ const mark = (page: number, kind: Mark["kind"], ...rects: Rect[]): Mark => ({
   page,
   kind,
   rects,
-  appearance: { fill: "#000000", textColor: "#ffffff", overlayText: "", fontSize: null, align: "center" },
+  appearance: { fill: "#000000", textColor: "#ffffff", overlayText: "", fontSize: null, align: "center", font: "helv", repeat: false },
   createdAt: "",
 });
 

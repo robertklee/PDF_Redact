@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api, ApiError } from "../api";
 import { describeMark, formatBytes, KIND_LABELS, plural } from "../lib/format";
+import { overlayDoesNotFit } from "../lib/overlay";
 import { formatPages } from "../lib/pages";
 import { useMarks } from "../marks";
 import { useStore } from "../store";
@@ -36,7 +37,8 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
     for (const m of marks) kinds[m.kind] += 1;
     const pages = [...new Set(marks.map((m) => m.page))].sort((a, b) => a - b);
     const unfilled = marks.filter((m) => m.appearance.fill === null).length;
-    return { kinds, pages, unfilled };
+    const crowded = marks.filter(overlayDoesNotFit).length;
+    return { kinds, pages, unfilled, crowded };
   }, [marks]);
 
   async function apply() {
@@ -113,6 +115,12 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
               <p className="hint warning">
                 {plural(summary.unfilled, "mark has", "marks have")} no fill: the content is removed
                 but the area is left blank, which may reveal the length of what was removed.
+              </p>
+            )}
+            {summary.crowded > 0 && (
+              <p className="hint warning">
+                The overlay text does not fit on {plural(summary.crowded, "mark")} and will be left
+                out there. Shorten the text or enlarge those marks to show it.
               </p>
             )}
             <fieldset className="options" disabled={busy}>
@@ -214,6 +222,12 @@ function Result(props: ResultProps) {
           <li>
             {plural(stats.textMarksAsArea.length, "text mark")} matched no characters and{" "}
             {stats.textMarksAsArea.length === 1 ? "was" : "were"} redacted as an area
+          </li>
+        )}
+        {stats.overlaysSkipped.length > 0 && (
+          <li>
+            Overlay text left out of {plural(stats.overlaysSkipped.length, "mark")} where it did not
+            fit
           </li>
         )}
         <li>

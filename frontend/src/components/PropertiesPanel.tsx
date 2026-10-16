@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { unsupportedChars } from "../lib/overlay";
+import { FONT_OPTIONS, overlayDoesNotFit, unsupportedChars } from "../lib/overlay";
 import { useMarks } from "../marks";
-import type { Align, Appearance } from "../types";
+import type { Align, Appearance, OverlayFont } from "../types";
 
 const MIXED = Symbol("mixed");
 type Field<T> = T | typeof MIXED;
@@ -35,6 +35,9 @@ export function PropertiesPanel() {
   const overlayText = common(items.map((a) => a.overlayText));
   const fontSize = common(items.map((a) => a.fontSize));
   const align = common(items.map((a) => a.align));
+  const font = common(items.map((a) => a.font));
+  const repeat = common(items.map((a) => a.repeat));
+  const crowded = targets.filter(overlayDoesNotFit).length;
 
   function apply(patch: Partial<Appearance>, key?: string) {
     if (editingDefaults) setDefaults(patch);
@@ -54,7 +57,7 @@ export function PropertiesPanel() {
           <button
             className="link"
             title="Use this appearance for new marks"
-            disabled={[fill, textColor, overlayText, fontSize, align].includes(MIXED)}
+            disabled={[fill, textColor, overlayText, fontSize, align, font, repeat].includes(MIXED)}
             onClick={() => setDefaults({ ...targets[0].appearance })}
           >
             Set as default
@@ -114,6 +117,24 @@ export function PropertiesPanel() {
           />
         </label>
         <label className="row">
+          <span>Font</span>
+          <select
+            value={font === MIXED ? "" : font}
+            onChange={(e) => apply({ font: e.target.value as OverlayFont })}
+          >
+            {font === MIXED && (
+              <option value="" disabled>
+                Mixed
+              </option>
+            )}
+            {FONT_OPTIONS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="row">
           <span>Font size</span>
           <input
             type="number"
@@ -150,6 +171,26 @@ export function PropertiesPanel() {
             ))}
           </div>
         </div>
+        <div className="row">
+          <span>Repeat</span>
+          <label className="inline">
+            <input
+              type="checkbox"
+              checked={repeat === true}
+              ref={(el) => {
+                if (el) el.indeterminate = repeat === MIXED;
+              }}
+              onChange={(e) => apply({ repeat: e.target.checked })}
+            />
+            Fill each box with the text
+          </label>
+        </div>
+        {crowded > 0 && (
+          <p className="hint warning">
+            The overlay text does not fit {targets.length === 1 ? "this mark" : `${crowded} of these marks`}{" "}
+            at 4 pt or more and will be left out. Shorten the text or enlarge the mark to show it.
+          </p>
+        )}
         <p className="hint">Hover a mark, or turn on Preview, to see how it will look.</p>
       </div>
     </section>

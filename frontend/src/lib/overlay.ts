@@ -1,68 +1,86 @@
-import type { Appearance, Rect } from "../types";
+import type { Appearance, Mark, OverlayFont, Rect } from "../types";
+import metrics from "./fontMetrics.json";
 
-// Overlay text is drawn by the server in PDF Helvetica ("helv"); these mirror its metrics and
-// fitting rules (backend/pdf_redact/core/redact.py) so the preview matches the output.
-export const OVERLAY_LINE_HEIGHT = 1.4;
-export const OVERLAY_PADDING = 1;
-export const MIN_OVERLAY_FONT_SIZE = 4;
+// Overlay text is drawn by the server (backend/pdf_redact/core/overlay.py). This mirrors its layout
+// rules with the same font metrics, so the preview matches the output; overlay.test.ts compares
+// both against layouts computed by the server. Regenerate fontMetrics.json and the fixtures with
+// `python -m tests.overlay_fixtures` (in backend/) after changing the server's layout.
+export const LINE_HEIGHT = 1.4;
+export const PADDING = 1;
+export const MIN_FONT_SIZE = 4;
 export const MAX_AUTO_FONT_SIZE = 24;
-const ASCENDER = 1.075;
-const DESCENDER = -0.299;
+const REPEAT_SEPARATOR = " ";
 
-// Glyph widths per 1000 units, as reported by PyMuPDF for "helv".
-// prettier-ignore
-const ASCII_WIDTHS = [
-  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
-  556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667,
-  611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
-  667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500,
-  222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
-]; // U+0020–U+007E
-// prettier-ignore
-const LATIN1_WIDTHS = [
-  278, 333, 556, 556, 556, 556, 260, 556, 333, 737, 370, 556, 584, 333, 737, 333, 400, 584, 333,
-  333, 333, 556, 537, 278, 333, 333, 365, 556, 834, 834, 834, 611, 667, 667, 667, 667, 667, 667,
-  1000, 722, 667, 667, 667, 667, 278, 278, 278, 278, 722, 722, 778, 778, 778, 778, 778, 584, 778,
-  722, 722, 722, 722, 667, 667, 611, 556, 556, 556, 556, 556, 556, 889, 500, 556, 556, 556, 556,
-  278, 278, 278, 278, 556, 556, 556, 556, 556, 556, 556, 584, 611, 556, 556, 556, 556, 500, 556,
-  500,
-]; // U+00A0–U+00FF
-const FALLBACK_WIDTH = 278;
-
-function charWidth(code: number): number {
-  if (code >= 0x20 && code <= 0x7e) return ASCII_WIDTHS[code - 0x20];
-  if (code >= 0xa0 && code <= 0xff) return LATIN1_WIDTHS[code - 0xa0];
-  return FALLBACK_WIDTH;
+interface FontMetrics {
+  label: string;
+  ascender: number;
+  descender: number;
+  /** Advance widths in 1/1000 em for U+0020..U+00FF. */
+  widths: number[];
 }
 
-export function textWidth(text: string, size: number): number {
+const FONTS: Record<OverlayFont, FontMetrics> = metrics;
+
+export const FONT_OPTIONS = (Object.keys(FONTS) as OverlayFont[]).map((value) => ({
+  value,
+  label: FONTS[value].label,
+}));
+
+/** Browser fonts that look like the PDF base-14 fonts the server uses. */
+export const FONT_FAMILIES: Record<OverlayFont, string> = {
+  helv: "Helvetica, Arial, sans-serif",
+  tiro: '"Times New Roman", Times, serif',
+  cour: '"Courier New", Courier, monospace',
+};
+
+/** Drawn in place of characters the fonts cannot show. */
+export const MISSING = "\u00b7";
+
+/**
+ * Overlay text as it will be drawn: the fonts only cover Latin-1, so other characters become a
+ * middle dot, and control characters a space.
+ */
+export function drawable(text: string): string {
+  let out = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!;
+    if ((code >= 0x21 && code <= 0x7e) || (code >= 0xa1 && code <= 0xff)) out += ch;
+    else if (code <= 0x20 || (code >= 0x7f && code <= 0xa0)) out += " ";
+    else out += MISSING;
+  }
+  return out.replace(/^ +| +$/g, "");
+}
+
+export function textWidth(text: string, size: number, font: OverlayFont = "helv"): number {
+  const { widths } = FONTS[font];
+  const missing = widths[MISSING.charCodeAt(0) - 0x20];
   let units = 0;
-  for (const ch of text) units += charWidth(ch.codePointAt(0)!);
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!;
+    units += code >= 0x20 && code <= 0xff ? widths[code - 0x20] : missing;
+  }
   return (units / 1000) * size;
 }
 
-/** Characters the overlay font cannot show. */
+/** Characters the overlay fonts cannot show (drawn as a middle dot). */
 export function unsupportedChars(text: string): string[] {
-  return [...new Set([...text].filter((ch) => {
-    const code = ch.codePointAt(0)!;
-    return !((code >= 0x20 && code <= 0x7e) || (code >= 0xa0 && code <= 0xff));
-  }))];
+  return [...new Set([...text].filter((ch) => ch.codePointAt(0)! > 0xff))];
 }
 
-const round2 = (v: number) => Math.round(v * 100) / 100;
-
-/** Largest overlay font size (capped by `requested`) that fits on one line, else null. */
+/** Largest font size (capped by `requested`) at which `text` fits on one line, else null. */
 export function fitFontSize(
   text: string,
   width: number,
   height: number,
   requested: number | null,
+  font: OverlayFont = "helv",
 ): number | null {
-  const unit = textWidth(text, 1);
+  const unit = textWidth(text, 1, font);
   if (unit <= 0) return null;
-  const fit = Math.min((width - 2 * OVERLAY_PADDING) / unit, height / OVERLAY_LINE_HEIGHT);
-  const size = Math.min(fit, requested ?? MAX_AUTO_FONT_SIZE);
-  return size >= MIN_OVERLAY_FONT_SIZE ? round2(size) : null;
+  const fit = Math.min((width - 2 * PADDING) / unit, height / LINE_HEIGHT);
+  // Round down to 1/100 pt so the text never outgrows the box.
+  const size = Math.floor(Math.min(fit, requested ?? MAX_AUTO_FONT_SIZE) * 100 + 1e-6) / 100;
+  return size >= MIN_FONT_SIZE ? size : null;
 }
 
 /** Writing directions in display space, keyed by counter-clockwise angle (y points down). */
@@ -73,29 +91,32 @@ const DIRECTIONS: Record<number, [number, number]> = {
   270: [0, 1],
 };
 
-export interface OverlayLayout {
+export interface OverlayLine {
   text: string;
-  angle: number;
-  size: number;
   /** Baseline start point in display space. */
   x: number;
   y: number;
 }
 
-/** Where the server will draw the overlay text of a box, or null if none fits. */
-export function overlayLayout(
-  rect: Rect,
-  appearance: Appearance,
-  textAngle?: number,
-): OverlayLayout | null {
-  const text = appearance.overlayText.trim();
+export interface OverlayLayout {
+  angle: number;
+  size: number;
+  lines: OverlayLine[];
+}
+
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
+/** Where the server will draw the overlay text of a box, or null if there is none or it cannot fit. */
+export function overlayLayout(rect: Rect, appearance: Appearance, textAngle?: number): OverlayLayout | null {
+  const text = drawable(appearance.overlayText);
   if (!text) return null;
+  const { font } = appearance;
   const w = rect[2] - rect[0];
   const h = rect[3] - rect[1];
   const fit = (a: number) =>
     a === 0 || a === 180
-      ? fitFontSize(text, w, h, appearance.fontSize)
-      : fitFontSize(text, h, w, appearance.fontSize);
+      ? fitFontSize(text, w, h, appearance.fontSize, font)
+      : fitFontSize(text, h, w, appearance.fontSize, font);
 
   let angle: number;
   let size: number | null;
@@ -118,21 +139,38 @@ export function overlayLayout(
 
   const [dx, dy] = DIRECTIONS[angle];
   const [ux, uy] = [dy, -dx];
-  const textW = textWidth(text, size);
-  const along = Math.abs(w * dx + h * dy);
-  const shift = {
-    left: -along / 2 + OVERLAY_PADDING,
-    center: -textW / 2,
-    right: along / 2 - OVERLAY_PADDING - textW,
-  }[appearance.align];
-  const drop = (size * (ASCENDER + DESCENDER)) / 2;
+  const [along, across] = angle === 0 || angle === 180 ? [w, h] : [h, w];
+  let rows = [text];
+  if (appearance.repeat) {
+    const unit = textWidth(text, size, font);
+    const gap = textWidth(REPEAT_SEPARATOR, size, font);
+    const perRow = Math.max(1, Math.floor((along - 2 * PADDING + gap) / (unit + gap) + 1e-9));
+    const count = Math.max(1, Math.floor(across / (size * LINE_HEIGHT) + 1e-9));
+    rows = Array<string>(count).fill(Array<string>(perRow).fill(text).join(REPEAT_SEPARATOR));
+  }
+
+  const { ascender, descender } = FONTS[font];
+  // Baseline sits below the centre line by half the glyphs' ascender+descender height.
+  const drop = (size * (ascender + descender)) / 2;
+  const pitch = size * LINE_HEIGHT;
   const cx = (rect[0] + rect[2]) / 2;
   const cy = (rect[1] + rect[3]) / 2;
-  return {
-    text,
-    angle,
-    size,
-    x: cx + dx * shift - ux * drop,
-    y: cy + dy * shift - uy * drop,
-  };
+  const lines = rows.map((row, i) => {
+    const width = textWidth(row, size, font);
+    const shift = {
+      left: -along / 2 + PADDING,
+      center: -width / 2,
+      right: along / 2 - PADDING - width,
+    }[appearance.align];
+    const rise = ((rows.length - 1) / 2 - i) * pitch - drop;
+    return { text: row, x: round2(cx + dx * shift + ux * rise), y: round2(cy + dy * shift + uy * rise) };
+  });
+  return { angle, size, lines };
+}
+
+/** True if the mark has overlay text that the server will leave out of at least one of its boxes. */
+export function overlayDoesNotFit(mark: Mark): boolean {
+  if (!drawable(mark.appearance.overlayText)) return false;
+  const angle = mark.kind === "text" ? mark.angle : undefined;
+  return mark.rects.some((r) => overlayLayout(r, mark.appearance, angle) === null);
 }

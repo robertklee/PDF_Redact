@@ -431,7 +431,6 @@ textarea {
 }
 
 .mark-overlay {
-  font-family: Helvetica, Arial, sans-serif;
   white-space: pre;
   pointer-events: none;
 }

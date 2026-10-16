@@ -14,6 +14,8 @@ export const DEFAULT_APPEARANCE: Appearance = {
   overlayText: "",
   fontSize: null,
   align: "center",
+  font: "helv",
+  repeat: false,
 };
 
 function loadDefaults(): Appearance {
@@ -27,7 +29,9 @@ function loadDefaults(): Appearance {
         hex.test(merged.textColor) &&
         typeof merged.overlayText === "string" &&
         (merged.fontSize === null || (merged.fontSize >= 4 && merged.fontSize <= 72)) &&
-        ["left", "center", "right"].includes(merged.align)
+        ["left", "center", "right"].includes(merged.align) &&
+        ["helv", "tiro", "cour"].includes(merged.font) &&
+        typeof merged.repeat === "boolean"
       ) {
         return merged;
       }

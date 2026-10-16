@@ -4,6 +4,8 @@ export type Rect = [number, number, number, number];
 
 export type MarkKind = "text" | "area" | "page";
 export type Align = "left" | "center" | "right";
+/** PDF base-14 fonts: Helvetica, Times, Courier. */
+export type OverlayFont = "helv" | "tiro" | "cour";
 
 export interface Appearance {
   fill: string | null;
@@ -11,6 +13,9 @@ export interface Appearance {
   overlayText: string;
   fontSize: number | null; // null = auto-fit
   align: Align;
+  font: OverlayFont;
+  /** Fill the box with copies of the overlay text. */
+  repeat: boolean;
 }
 
 export interface Mark {
@@ -104,6 +109,8 @@ export interface OutputInfo {
     glyphsRemoved: number;
     textMarksAsArea: string[];
     safetyPassGlyphs: number;
+    /** Marks whose overlay text was left out because it could not fit. */
+    overlaysSkipped: string[];
   };
   verification: {
     passed: boolean;
