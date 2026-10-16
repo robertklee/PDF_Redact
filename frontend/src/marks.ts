@@ -61,8 +61,9 @@ interface MarksState {
   /** Revision of the marks last applied to produce a redacted copy. */
   appliedRevision: number;
 
-  /** Add marks (selecting them), optionally replacing others in the same undo step. */
-  addMarks(items: NewMark[], replace?: string[]): Mark[];
+  /** Add marks (selecting them), optionally replacing others in the same undo step.
+   * Additions with the same `key` in quick succession form one undo step. */
+  addMarks(items: NewMark[], replace?: string[], key?: string): Mark[];
   removeMarks(ids: string[]): void;
   /** Change marks; rapid changes with the same `key` form one undo step. */
   updateMarks(ids: string[], change: (mark: Mark) => Mark, key?: string): void;
@@ -120,7 +121,7 @@ export const useMarks = create<MarksState>()((set, get) => {
     revision: 0,
     appliedRevision: 0,
 
-    addMarks(items, replace = []) {
+    addMarks(items, replace = [], key) {
       const createdAt = new Date().toISOString();
       const { defaults } = get();
       const created: Mark[] = items.map((item) => ({
@@ -134,7 +135,7 @@ export const useMarks = create<MarksState>()((set, get) => {
         createdAt,
       }));
       const drop = new Set(replace);
-      commit([...get().marks.filter((m) => !drop.has(m.id)), ...created]);
+      commit([...get().marks.filter((m) => !drop.has(m.id)), ...created], key);
       set({ selection: created.map((m) => m.id) });
       return created;
     },

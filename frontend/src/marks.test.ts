@@ -56,6 +56,14 @@ describe("marks store", () => {
     expect(store().marks.map((m) => m.id)).toEqual([word.id]);
   });
 
+  it("merges keyed additions, such as a word mark widened to its line", () => {
+    const [word] = store().addMarks([area()], [], "click:1");
+    const [line] = store().addMarks([area()], [word.id], "click:1");
+    expect(store().marks.map((m) => m.id)).toEqual([line.id]);
+    store().undo();
+    expect(store().marks).toEqual([]);
+  });
+
   it("toggles selection", () => {
     const [a, b] = store().addMarks([area(), area()]);
     store().select([a.id]);

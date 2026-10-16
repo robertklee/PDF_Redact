@@ -78,7 +78,7 @@ export const MarkLayer = memo(function MarkLayer({ info, zoom }: Props) {
   const [hoverId, setHoverId] = useState<string | null>(null);
   const svg = useRef<SVGSVGElement>(null);
   const gesture = useRef<Gesture | null>(null);
-  const clicks = useRef({ at: 0, x: 0, y: 0, count: 0, wordMark: null as string | null });
+  const clicks = useRef({ at: 0, x: 0, y: 0, count: 0, wordMark: null as string | null, key: "" });
 
   const bounds: Rect = [0, 0, info.width, info.height];
   const lines = pageText?.lines ?? [];
@@ -116,11 +116,12 @@ export const MarkLayer = memo(function MarkLayer({ info, zoom }: Props) {
     return nearEdge ? (marks.findLast((m) => m.kind === "page") ?? null) : null;
   }
 
-  function addTextMark(sel: ReturnType<typeof selectionFromRanges>, replace: string[] = []) {
+  function addTextMark(sel: ReturnType<typeof selectionFromRanges>, replace: string[] = [], key?: string) {
     if (!sel) return null;
     const [mark] = useMarks.getState().addMarks(
       [{ page: info.index, kind: "text", rects: sel.rects.map(roundRect), text: sel.text, angle: sel.angle }],
       replace,
+      key,
     );
     return mark;
   }
@@ -179,7 +180,9 @@ export const MarkLayer = memo(function MarkLayer({ info, zoom }: Props) {
       const range = c.count === 2 ? wordAt(lines, p, slop) : lineAt(lines, p, slop);
       if (!range) return;
       const replace = c.count === 3 && c.wordMark ? [c.wordMark] : [];
-      const mark = addTextMark(selectionFromRanges(lines, [range]), replace);
+      // The line mark replaces the word mark in the same undo step.
+      if (c.count === 2) c.key = `multiclick:${++gestureSeq}`;
+      const mark = addTextMark(selectionFromRanges(lines, [range]), replace, c.key);
       c.wordMark = c.count === 2 ? (mark?.id ?? null) : null;
       return;
     }
