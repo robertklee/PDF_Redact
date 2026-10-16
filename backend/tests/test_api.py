@@ -141,6 +141,11 @@ def test_encrypted_document_flow(client, password: str) -> None:
     )
     info = client.post(f"/api/documents/{doc_id}/unlock", json={"password": password}).json()
     assert info["needsPassword"] is False and info["pageCount"] == 1
+    assert "encrypted" in [n["code"] for n in info["notices"]]
+    # Inspecting the unlocked document must not disturb its decryption.
+    assert client.get(f"/api/documents/{doc_id}").json()["needsPassword"] is False
+    text = client.get(f"/api/documents/{doc_id}/pages/0/text").json()
+    assert SECRET in "".join("".join(line["chars"]) for line in text["lines"])
 
     with pymupdf.open(stream=data, filetype="pdf") as doc:
         doc.authenticate(USER_PASSWORD)

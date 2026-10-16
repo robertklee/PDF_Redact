@@ -22,7 +22,7 @@ def pypdf_text(data: bytes, password: str | None = None) -> str:
 
 def mupdf_text(data: bytes, password: str | None = None) -> str:
     with pymupdf.open(stream=data, filetype="pdf") as doc:
-        if doc.needs_pass:
+        if doc.is_encrypted:
             doc.authenticate(password or "")
         return "\n".join(page.get_text() for page in doc)
 
@@ -36,7 +36,7 @@ def raw_contains(data: bytes, needle: str) -> bool:
 def display_hits(data: bytes, needle: str, page: int = 0, password: str | None = None):
     """Display-space rects of `needle` on a page, built from tight char boxes like the UI does."""
     with pymupdf.open(stream=data, filetype="pdf") as doc:
-        if doc.needs_pass:
+        if doc.is_encrypted:
             doc.authenticate(password or "")
         pg = doc[page]
         hits = []

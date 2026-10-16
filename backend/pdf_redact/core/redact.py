@@ -343,7 +343,7 @@ def save_redacted(doc: pymupdf.Document) -> bytes:
 
 def open_pdf(data: bytes, password: str | None = None) -> pymupdf.Document:
     doc = pymupdf.open(stream=data, filetype="pdf")
-    if doc.needs_pass and not doc.authenticate(password or ""):
+    if doc.is_encrypted and not doc.authenticate(password or ""):
         doc.close()
         raise PermissionError("Incorrect or missing password")
     return doc

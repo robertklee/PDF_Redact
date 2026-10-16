@@ -58,8 +58,10 @@ def existing_redact_annots(doc: pymupdf.Document) -> int:
 
 def document_notices(doc: pymupdf.Document) -> list[Notice]:
     """Notices for an opened (and, if needed, authenticated) document."""
+    # `doc.needs_pass` must not be used here: MuPDF answers it by authenticating with an empty
+    # password, which replaces the key of an already unlocked document and breaks decryption.
     notices: list[Notice] = []
-    if doc.needs_pass or doc.metadata.get("encryption"):
+    if doc.is_encrypted or doc.metadata.get("encryption"):
         notices.append(
             Notice(
                 "encrypted",
@@ -68,7 +70,7 @@ def document_notices(doc: pymupdf.Document) -> list[Notice]:
                 "passwords.",
             )
         )
-    if doc.needs_pass:
+    if doc.is_encrypted:
         return notices
     if doc.is_repaired:
         notices.append(
