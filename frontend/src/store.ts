@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api, ApiError } from "./api";
+import { useMarks } from "./marks";
 import { openPdf, type PDFDocumentProxy } from "./pdf";
 import type { DocumentInfo, PageText } from "./types";
 
@@ -93,6 +94,7 @@ export const useStore = create<State>()((set, get) => ({
   async closeDocument() {
     const { doc, pdf } = get();
     set({ ...initialDocState });
+    useMarks.getState().reset();
     await pdf?.loadingTask.destroy();
     if (doc) await api.close(doc.id).catch(() => undefined);
   },

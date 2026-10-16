@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { openFilePicker } from "../lib/files";
+import { confirmDiscard, openFilePicker } from "../lib/files";
 import { useStore, ZOOM_STEPS } from "../store";
 
 function PageNavigator() {
@@ -91,7 +91,7 @@ export function Toolbar() {
       <strong className="brand">PDF Redact</strong>
       <div className="group">
         <button onClick={openFilePicker}>Open…</button>
-        {doc && <button onClick={() => void closeDocument()}>Close</button>}
+        {doc && <button onClick={() => confirmDiscard() && void closeDocument()}>Close</button>}
       </div>
       {doc && <span className="filename" title={doc.filename}>{doc.filename}</span>}
       {ready && (

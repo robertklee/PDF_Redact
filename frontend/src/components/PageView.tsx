@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { renderPage } from "../pdf";
 import { useStore } from "../store";
 import type { PageInfo } from "../types";
+import { MarkLayer } from "./MarkLayer";
 import { TextBoxes } from "./TextBoxes";
 
 interface Props {
@@ -76,6 +77,7 @@ export const PageView = memo(function PageView({ info, zoom, top, left }: Props)
       {status === "rendering" && <div className="page-status">Rendering…</div>}
       {status === "error" && <div className="page-status error">This page could not be rendered</div>}
       {showTextBoxes && <TextBoxes info={info} zoom={zoom} />}
+      {status !== "error" && <MarkLayer info={info} zoom={zoom} />}
     </div>
   );
 });
