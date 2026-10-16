@@ -93,13 +93,16 @@ def page_text_payload(page: pymupdf.Page) -> dict:
     out_lines = []
     unmapped = 0
     has_text = False
+    m = page.rotation_matrix
     for chars in extract_lines(page):
         boxes = [to_display(page, ch.box) for ch in chars]
+        direction = pymupdf.Point(chars[0].dir) * m - pymupdf.Point(0, 0) * m
         out_lines.append(
             {
                 "bbox": rect_list(union(boxes)),
                 "chars": [ch.c for ch in chars],
                 "boxes": [rect_list(b) for b in boxes],
+                "dir": [round(direction.x, 4), round(direction.y, 4)],
             }
         )
         unmapped += sum(ch.c == REPLACEMENT_CHAR for ch in chars)

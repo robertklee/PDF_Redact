@@ -85,6 +85,7 @@ def test_page_text_is_in_display_space(client) -> None:
         full = page.search_for(SECRET)[0] * page.rotation_matrix
     assert abs(tight.y0 - full.y0) < 1 and abs(tight.y1 - full.y1) < 1  # along the text
     assert full.x0 - 0.5 <= tight.x0 < tight.x1 <= full.x1 + 0.5  # across: tighter
+    assert line["dir"] == [0, 1]  # rot 90: text runs down the screen
     assert client.get(f"/api/documents/{doc_id}/pages/5/text").status_code == 404
 
 
