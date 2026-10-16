@@ -1,16 +1,16 @@
 import { type DragEvent, useEffect, useState } from "react";
-import { MarksPanel } from "./components/MarksPanel";
 import { NoticeBar } from "./components/NoticeBar";
 import { OpenScreen } from "./components/OpenScreen";
 import { PasswordDialog } from "./components/PasswordDialog";
-import { PropertiesPanel } from "./components/PropertiesPanel";
 import { RedactionBar } from "./components/RedactionBar";
+import { Sidebar } from "./components/Sidebar";
 import { Thumbnails } from "./components/Thumbnails";
 import { Toolbar } from "./components/Toolbar";
 import { Viewer } from "./components/Viewer";
 import { confirmDiscard } from "./lib/files";
 import { clampedOffset, roundRect, translate } from "./lib/geometry";
 import { hasUnappliedMarks, useMarks } from "./marks";
+import { openSearch } from "./search";
 import { useStore } from "./store";
 import type { Rect } from "./types";
 
@@ -55,10 +55,16 @@ function useGlobalShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const { phase, zoomBy, setZoom } = useStore.getState();
-      if (phase !== "ready" || isEditable(e.target) || document.querySelector(".modal")) return;
-      const marks = useMarks.getState();
+      if (phase !== "ready" || document.querySelector(".modal")) return;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
+      if (mod && !e.altKey && !e.shiftKey && key === "f") {
+        e.preventDefault();
+        openSearch();
+        return;
+      }
+      if (isEditable(e.target)) return;
+      const marks = useMarks.getState();
       if (mod) {
         if (key === "=" || key === "+") zoomBy(1);
         else if (key === "-") zoomBy(-1);
@@ -152,10 +158,7 @@ export default function App() {
           <main className="workspace">
             <Thumbnails />
             <Viewer />
-            <aside className="sidebar">
-              <MarksPanel />
-              <PropertiesPanel />
-            </aside>
+            <Sidebar />
           </main>
         </>
       ) : (

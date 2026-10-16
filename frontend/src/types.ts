@@ -23,8 +23,13 @@ export interface Mark {
   text?: string;
   /** Display-space writing angle of the marked text (0/90/180/270), for the overlay preview. */
   angle?: number;
+  /** How the mark was made; search and detection marks also record what matched. */
+  source?: MarkSource;
+  category?: string;
   createdAt: string;
 }
+
+export type MarkSource = "manual" | "search" | "detect";
 
 export interface PageInfo {
   index: number;
@@ -102,4 +107,51 @@ export interface OutputInfo {
     counts: Record<"pass" | "warn" | "fail", number>;
     checks: Check[];
   };
+}
+
+export type SearchMode = "phrase" | "word" | "regex";
+
+export interface SearchRequest {
+  query: string;
+  mode: SearchMode;
+  caseSensitive: boolean;
+  /** Zero-based pages to search; all pages if omitted. */
+  pages?: number[];
+}
+
+export interface CustomPattern {
+  name: string;
+  pattern: string;
+}
+
+export interface DetectRequest {
+  categories: string[];
+  keywords: string[];
+  patterns: CustomPattern[];
+  pages?: number[];
+}
+
+/** A search or detection hit, with the geometry of a text mark covering it. */
+export interface SearchMatch {
+  page: number;
+  rects: Rect[];
+  text: string;
+  angle: number | null;
+  before: string;
+  after: string;
+  /** Detector id, "keyword" or "custom:<name>" (detection only). */
+  category: string | null;
+}
+
+export interface SearchResponse {
+  matches: SearchMatch[];
+  truncated: boolean;
+}
+
+export interface Detector {
+  id: string;
+  label: string;
+  short: string;
+  description: string;
+  default: boolean;
 }

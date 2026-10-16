@@ -25,6 +25,7 @@ import {
   wordAt,
 } from "../lib/textSelection";
 import { useMarks } from "../marks";
+import { useSearch } from "../search";
 import { useStore } from "../store";
 import type { Mark, PageInfo, Rect } from "../types";
 
@@ -68,6 +69,14 @@ export const MarkLayer = memo(function MarkLayer({ info, zoom }: Props) {
   const preview = useMarks((s) => s.preview);
   const pageTextEntry = useStore((s) => s.pageText[info.index]);
   const pageText = typeof pageTextEntry === "object" ? pageTextEntry : null;
+  const searchOpen = useSearch((s) => s.tab === "search");
+  const hits = useSearch((s) => s.hits);
+  const checkedHits = useSearch((s) => s.checked);
+  const activeHit = useSearch((s) => s.active);
+  const pageHits = useMemo(
+    () => (searchOpen ? hits.flatMap((h, i) => (h.page === info.index ? [i] : [])) : []),
+    [searchOpen, hits, info.index],
+  );
 
   const marks = useMemo(() => allMarks.filter((m) => m.page === info.index), [allMarks, info.index]);
   const selected = useMemo(() => new Set(selection), [selection]);
@@ -319,6 +328,20 @@ export const MarkLayer = memo(function MarkLayer({ info, zoom }: Props) {
           <rect width={4 / zoom} height={12 / zoom} className="hatch" />
         </pattern>
       </defs>
+      {pageHits.length > 0 && (
+        <g className="search-hits">
+          {pageHits.map((i) =>
+            hits[i].rects.map((r, k) => (
+              <rect
+                key={`${i}-${k}`}
+                className={`search-hit${checkedHits.has(i) ? "" : " unchecked"}${i === activeHit ? " active" : ""}`}
+                data-hit={i}
+                {...box(r)}
+              />
+            )),
+          )}
+        </g>
+      )}
       {marks.map((m) => (
         <MarkShape
           key={m.id}

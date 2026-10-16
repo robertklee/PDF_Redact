@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { api, ApiError } from "./api";
 import { useMarks } from "./marks";
 import { openPdf, type PDFDocumentProxy } from "./pdf";
+import { useSearch } from "./search";
 import type { DocumentInfo, PageText } from "./types";
 
 export type Phase = "empty" | "opening" | "locked" | "ready";
@@ -95,6 +96,7 @@ export const useStore = create<State>()((set, get) => ({
     const { doc, pdf } = get();
     set({ ...initialDocState });
     useMarks.getState().reset();
+    useSearch.getState().clearResults();
     await pdf?.loadingTask.destroy();
     if (doc) await api.close(doc.id).catch(() => undefined);
   },

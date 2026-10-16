@@ -1,4 +1,14 @@
-import type { ApplyOptions, DocumentInfo, Mark, OutputInfo, PageText } from "./types";
+import type {
+  ApplyOptions,
+  DetectRequest,
+  Detector,
+  DocumentInfo,
+  Mark,
+  OutputInfo,
+  PageText,
+  SearchRequest,
+  SearchResponse,
+} from "./types";
 
 const TOKEN_KEY = "pdf-redact-token";
 
@@ -77,6 +87,18 @@ export const api = {
 
   pageText(id: string, page: number): Promise<PageText> {
     return json(`/api/documents/${id}/pages/${page}/text`);
+  },
+
+  search(id: string, request: SearchRequest): Promise<SearchResponse> {
+    return post(`/api/documents/${id}/search`, request);
+  },
+
+  detect(id: string, request: DetectRequest): Promise<SearchResponse> {
+    return post(`/api/documents/${id}/detect`, request);
+  },
+
+  detectors(): Promise<Detector[]> {
+    return json("/api/detectors");
   },
 
   apply(id: string, marks: Mark[], options: ApplyOptions): Promise<OutputInfo> {

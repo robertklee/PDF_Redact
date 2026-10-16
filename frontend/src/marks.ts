@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Appearance, Mark, MarkKind, Rect } from "./types";
+import type { Appearance, Mark, MarkKind, MarkSource, Rect } from "./types";
 
 export type Tool = "select" | "text" | "area";
 
@@ -45,6 +45,8 @@ export interface NewMark {
   text?: string;
   angle?: number;
   appearance?: Appearance;
+  source?: MarkSource;
+  category?: string;
 }
 
 interface MarksState {
@@ -132,6 +134,8 @@ export const useMarks = create<MarksState>()((set, get) => {
         appearance: { ...(item.appearance ?? defaults) },
         text: item.text,
         angle: item.angle,
+        source: item.source ?? "manual",
+        category: item.category,
         createdAt,
       }));
       const drop = new Set(replace);
