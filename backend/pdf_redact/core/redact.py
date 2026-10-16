@@ -263,7 +263,6 @@ def redact_page(
 ) -> None:
     images = IMAGE_MODES[options.images]
     graphics = GRAPHICS_MODES[options.graphics]
-    _delete_existing_redact_annots(page)
 
     text_regions: list[pymupdf.Rect] = []
     covers: list[Overlay] = []
@@ -323,6 +322,9 @@ def apply_marks(
             raise ValueError(f"Mark {mark.id} refers to page {mark.page}, which does not exist")
         by_page[mark.page].append(mark)
         stats.marks += 1
+    for page in doc:
+        # apply_redactions() would apply these too, and elsewhere they would be left unapplied.
+        _delete_existing_redact_annots(page)
     for pno in sorted(by_page):
         redact_page(doc[pno], by_page[pno], options, stats)
     stats.pages = sorted(by_page)

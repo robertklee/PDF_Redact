@@ -7,8 +7,9 @@ import io
 import pymupdf
 import pypdf
 
-from pdf_redact.core.geometry import to_display
+from pdf_redact.core.geometry import to_display, union
 from pdf_redact.core.redact import Appearance, Mark
+from pdf_redact.core.text import extract_lines
 
 
 def pypdf_text(data: bytes, password: str | None = None) -> str:
@@ -33,12 +34,20 @@ def raw_contains(data: bytes, needle: str) -> bool:
 
 
 def display_hits(data: bytes, needle: str, page: int = 0, password: str | None = None):
-    """Display-space rects of `needle` on a page, as the UI would send them."""
+    """Display-space rects of `needle` on a page, built from tight char boxes like the UI does."""
     with pymupdf.open(stream=data, filetype="pdf") as doc:
         if doc.needs_pass:
             doc.authenticate(password or "")
         pg = doc[page]
-        return [tuple(to_display(pg, r)) for r in pg.search_for(needle)]
+        hits = []
+        for line in extract_lines(pg):
+            text = "".join(ch.c for ch in line)
+            start = text.find(needle)
+            while start >= 0:
+                box = union([ch.box for ch in line[start : start + len(needle)]])
+                hits.append(tuple(to_display(pg, box)))
+                start = text.find(needle, start + 1)
+        return hits
 
 
 def text_mark(rects, page: int = 0, mark_id: str = "m1", overlay: str = "") -> Mark:

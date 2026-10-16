@@ -231,8 +231,22 @@ def test_encrypted_input_stays_encrypted() -> None:
 
 def test_preexisting_redact_annotations_are_not_applied_implicitly() -> None:
     data = corpus.existing_redaction()
-    out, _, _ = _redact_and_verify(data, [text_mark(display_hits(data, SECRET))])
-    assert ABOVE in mupdf_text(out)
+    # Foreign /Redact annotations are dropped from every page, whether or not it has marks.
+    data = _with_blank_page(data)
+    for page in (0, 1):
+        marks = (
+            [text_mark(display_hits(data, SECRET))] if page == 0 else [area_mark((0, 0, 9, 9), 1)]
+        )
+        out, _, _ = _redact_and_verify(data, marks)
+        assert ABOVE in mupdf_text(out)
+        with pymupdf.open(stream=out, filetype="pdf") as doc:
+            assert not any(list(p.annots(types=[pymupdf.PDF_ANNOT_REDACT])) for p in doc)
+
+
+def _with_blank_page(data: bytes) -> bytes:
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        doc.new_page()
+        return doc.tobytes()
 
 
 def test_text_mark_without_glyphs_falls_back_to_area() -> None:
