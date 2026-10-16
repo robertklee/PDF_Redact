@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdf-redact"
+version = "0.1.0"
+description = "Local Acrobat-style PDF redaction tool with true content removal"
+requires-python = ">=3.11"
+# PyMuPDF is AGPL-3.0 (or commercial license from Artifex).
+dependencies = [
+  "pymupdf>=1.24.10",
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.29",
+  "pydantic>=2.6",
+  "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27", "pypdf>=4", "ruff>=0.5"]
+
+[project.scripts]
+pdf-redact = "pdf_redact.main:cli"
+
+[tool.setuptools.packages.find]
+include = ["pdf_redact*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore:builtin type swig:DeprecationWarning"]
