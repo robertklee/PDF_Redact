@@ -282,6 +282,8 @@ th, td { text-align: left; vertical-align: top; padding: 4px 8px;
 th { background: #f9fafb; font-weight: 600; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 code, .hash { font: 12px ui-monospace, Menlo, monospace; word-break: break-all; }
+code.pos { white-space: nowrap; word-break: normal; }
+table.compact { width: auto; min-width: 280px; }
 .muted { color: #6b7280; }
 .verdict { padding: 10px 14px; border-radius: 8px; font-weight: 600; margin: 16px 0; }
 .verdict.pass { background: #f0fdf4; color: #166534; }
@@ -299,6 +301,20 @@ pre { margin: 0; white-space: pre-wrap; font: inherit; }
 """
 
 _KINDS = {"text": "Text", "area": "Area", "page": "Page"}
+_SANITIZE = {
+    "layers": "Hidden layers",
+    "forms": "Form fields",
+    "annotations": "Comments and markup",
+    "outside-crop": "Content outside the visible page area",
+    "hidden-text": "Hidden text",
+    "links": "Links",
+    "attachments": "Attached files",
+    "javascript": "JavaScript and automatic actions",
+    "metadata": "Document properties and metadata",
+    "thumbnails": "Page thumbnails",
+    "bookmarks": "Bookmarks",
+    "page-labels": "Page labels",
+}
 _SOURCES = {"manual": "Manual", "search": "Search", "detect": "Detected"}
 _IMAGES = {
     "pixels": "Covered pixels blanked",
@@ -323,7 +339,12 @@ def _e(value: Any) -> str:
     return escape("" if value is None else str(value))
 
 
-def _rows(rows: list[list[str]], head: list[str], numeric: frozenset[int] = frozenset()) -> str:
+def _rows(
+    rows: list[list[str]],
+    head: list[str],
+    numeric: frozenset[int] = frozenset(),
+    compact: bool = False,
+) -> str:
     def cells(tag: str, values: list[str]) -> str:
         return "".join(
             f"<{tag}{' class=num' if i in numeric else ''}>{v}</{tag}>"
@@ -331,7 +352,8 @@ def _rows(rows: list[list[str]], head: list[str], numeric: frozenset[int] = froz
         )
 
     body = "".join(f"<tr>{cells('td', r)}</tr>" for r in rows)
-    return f"<table><thead><tr>{cells('th', head)}</tr></thead><tbody>{body}</tbody></table>"
+    table = "<table class=compact>" if compact else "<table>"
+    return f"{table}<thead><tr>{cells('th', head)}</tr></thead><tbody>{body}</tbody></table>"
 
 
 def _size(n: int) -> str:
@@ -419,6 +441,7 @@ def audit_html(view: dict[str, Any]) -> str:
                 [[str(p["page"]), str(p["marks"])] for p in s["pages"]],
                 ["Page", "Marks"],
                 frozenset({1}),
+                compact=True,
             )
         )
     if s["overlayTexts"]:
@@ -428,6 +451,7 @@ def audit_html(view: dict[str, Any]) -> str:
                 [[_e(t["text"]), str(t["marks"])] for t in s["overlayTexts"]],
                 ["Overlay text", "Marks"],
                 frozenset({1}),
+                compact=True,
             ),
         ]
 
@@ -450,7 +474,7 @@ def audit_html(view: dict[str, Any]) -> str:
             _rows(
                 [
                     [
-                        _e(a["code"]),
+                        _e(_SANITIZE.get(a["code"], a["code"])),
                         _e(a["message"]) if a["count"] else "<span class=muted>None found</span>",
                     ]
                     for a in view["sanitized"]
@@ -496,7 +520,7 @@ def audit_html(view: dict[str, Any]) -> str:
                             else ""
                         ),
                         _e(r["overlayText"]),
-                        "<code>" + ", ".join(f"{x:g}" for x in r["bbox"]) + "</code>",
+                        "<code class=pos>" + ", ".join(f"{x:g}" for x in r["bbox"]) + "</code>",
                         _mark_text(r),
                         f"<span class='status {r['status']}'>{STATUS_LABELS[r['status']]}</span>"
                         + "".join(f"<br><span class=muted>{_e(n)}</span>" for n in r["notes"]),
