@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { confirmDiscard, openFilePicker } from "../lib/files";
 import { useStore, ZOOM_STEPS } from "../store";
+import { ProjectMenu } from "./ProjectMenu";
 
 function PageNavigator() {
   const currentPage = useStore((s) => s.currentPage);
@@ -92,6 +93,7 @@ export function Toolbar() {
       <div className="group">
         <button onClick={openFilePicker}>Open…</button>
         {doc && <button onClick={() => confirmDiscard() && void closeDocument()}>Close</button>}
+        {ready && <ProjectMenu />}
       </div>
       {doc && <span className="filename" title={doc.filename}>{doc.filename}</span>}
       {ready && (

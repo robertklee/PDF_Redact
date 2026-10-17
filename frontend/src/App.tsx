@@ -7,9 +7,10 @@ import { Sidebar } from "./components/Sidebar";
 import { Thumbnails } from "./components/Thumbnails";
 import { Toolbar } from "./components/Toolbar";
 import { Viewer } from "./components/Viewer";
-import { confirmDiscard } from "./lib/files";
+import { confirmDiscard, loadProjectFile, saveProject } from "./lib/files";
 import { clampedOffset, roundRect, translate } from "./lib/geometry";
-import { hasUnappliedMarks, useMarks } from "./marks";
+import { isProjectFile } from "./lib/project";
+import { hasUnsavedMarks, useMarks } from "./marks";
 import { openSearch } from "./search";
 import { useStore } from "./store";
 import type { Rect } from "./types";
@@ -63,6 +64,11 @@ function useGlobalShortcuts() {
         openSearch();
         return;
       }
+      if (mod && !e.altKey && !e.shiftKey && key === "s") {
+        e.preventDefault();
+        saveProject();
+        return;
+      }
       if (isEditable(e.target)) return;
       const marks = useMarks.getState();
       if (mod) {
@@ -99,7 +105,7 @@ function useGlobalShortcuts() {
 function useUnloadGuard() {
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnappliedMarks(useMarks.getState())) e.preventDefault();
+      if (hasUnsavedMarks(useMarks.getState())) e.preventDefault();
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
@@ -110,6 +116,8 @@ export default function App() {
   const phase = useStore((s) => s.phase);
   const error = useStore((s) => s.error);
   const setError = useStore((s) => s.setError);
+  const status = useStore((s) => s.status);
+  const setStatus = useStore((s) => s.setStatus);
   const openFile = useStore((s) => s.openFile);
   const [dragging, setDragging] = useState(false);
   useGlobalShortcuts();
@@ -118,13 +126,17 @@ export default function App() {
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
     setDragging(false);
-    const file = [...e.dataTransfer.files].find(
-      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
-    );
+    const files = [...e.dataTransfer.files];
+    const file = files.find((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
+    const project = files.find(isProjectFile);
     if (file) {
       if (confirmDiscard()) void openFile(file);
-    } else if (e.dataTransfer.files.length) {
-      setError("Only PDF files can be opened.");
+    } else if (project && phase === "ready") {
+      void loadProjectFile(project);
+    } else if (files.length) {
+      setError(
+        project ? "Open the PDF first, then load its project." : "Only PDF files and PDF Redact projects can be opened.",
+      );
     }
   };
 
@@ -148,6 +160,14 @@ export default function App() {
         <div className="notice-bar error" role="alert">
           <span>{error}</span>
           <button className="link" onClick={() => setError(null)} aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
+      {status && (
+        <div className="notice-bar info status" role="status">
+          <span>{status}</span>
+          <button className="link" onClick={() => setStatus(null)} aria-label="Dismiss">
             ✕
           </button>
         </div>

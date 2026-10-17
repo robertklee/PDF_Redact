@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { api, ApiError } from "./api";
+import { importedMarks } from "./lib/project";
 import { useMarks } from "./marks";
-import { openPdf, type PDFDocumentProxy } from "./pdf";
+import { hideRedactAnnotations, openPdf, type PDFDocumentProxy } from "./pdf";
 import { useSearch } from "./search";
 import type { DocumentInfo, PageText } from "./types";
 
@@ -22,6 +23,8 @@ export interface ScrollRequest {
 interface State {
   phase: Phase;
   error: string | null;
+  /** A passing confirmation, such as how many marks a project restored. */
+  status: string | null;
   file: File | null;
   bytes: Uint8Array | null;
   doc: DocumentInfo | null;
@@ -38,6 +41,7 @@ interface State {
   unlock(password: string): Promise<void>;
   closeDocument(): Promise<void>;
   setError(error: string | null): void;
+  setStatus(status: string | null): void;
   setZoom(zoom: number, fit?: FitMode): void;
   zoomBy(direction: 1 | -1): void;
   setCurrentPage(page: number): void;
@@ -55,6 +59,7 @@ const initialDocState = {
   bytes: null,
   doc: null,
   pdf: null,
+  status: null,
   currentPage: 0,
   scrollRequest: null,
   pageText: {},
@@ -78,6 +83,8 @@ export const useStore = create<State>()((set, get) => ({
         return;
       }
       const pdf = await openPdf(bytes);
+      await hideRedactAnnotations(pdf, doc.redactions.map((r) => r.page));
+      useMarks.getState().load(importedMarks(doc), false);
       set({ phase: "ready", doc, bytes, pdf, fit: get().fit ?? "width" });
     } catch (err) {
       set({ ...initialDocState, error: message(err) });
@@ -89,6 +96,8 @@ export const useStore = create<State>()((set, get) => ({
     if (!doc || !bytes) return;
     const unlocked = await api.unlock(doc.id, password); // throws on a wrong password
     const pdf = await openPdf(bytes, password);
+    await hideRedactAnnotations(pdf, unlocked.redactions.map((r) => r.page));
+    useMarks.getState().load(importedMarks(unlocked), false);
     set({ phase: "ready", doc: unlocked, pdf, error: null });
   },
 
@@ -103,6 +112,10 @@ export const useStore = create<State>()((set, get) => ({
 
   setError(error) {
     set({ error });
+  },
+
+  setStatus(status) {
+    set({ status });
   },
 
   setZoom(zoom, fit = null) {

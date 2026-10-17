@@ -1250,3 +1250,71 @@ button.hit-text:hover:not(:disabled) {
 .add-code {
   align-self: flex-start;
 }
+
+.notice-bar.status {
+  justify-content: space-between;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu-popup {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
+}
+
+.menu-popup [role="menuitem"] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 8px;
+  border: none;
+  background: none;
+  text-align: left;
+}
+
+.menu-popup [role="menuitem"]:hover:not(:disabled),
+.menu-popup [role="menuitem"]:focus-visible {
+  background: #f3f4f6;
+}
+
+.menu-popup [role="menuitem"]:disabled {
+  opacity: 0.5;
+}
+
+.menu-popup hr {
+  width: 100%;
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.menu-label {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.menu-label kbd {
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+}
+
+.menu-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}

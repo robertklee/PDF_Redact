@@ -80,6 +80,19 @@ function post<T>(path: string, body: unknown): Promise<T> {
   });
 }
 
+/** Marks as the server takes them; only search and detection text is sent (see `searchTerms`). */
+const wireMarks = (marks: Mark[]) =>
+  marks.map(({ id, page, kind, rects, appearance, source, category, createdAt }) => ({
+    id,
+    page,
+    kind,
+    rects: kind === "page" ? [] : rects,
+    appearance,
+    source: source ?? "manual",
+    category: category?.slice(0, 100) ?? null,
+    createdAt,
+  }));
+
 export const api = {
   upload(file: File): Promise<DocumentInfo> {
     return json(`/api/documents?filename=${encodeURIComponent(file.name)}`, {
@@ -114,17 +127,17 @@ export const api = {
   },
 
   apply(id: string, marks: Mark[], options: ApplyOptions): Promise<OutputInfo> {
-    const wire = marks.map(({ id, page, kind, rects, appearance, source, category, createdAt }) => ({
-      id,
-      page,
-      kind,
-      rects: kind === "page" ? [] : rects,
-      appearance,
-      source: source ?? "manual",
-      category: category?.slice(0, 100) ?? null,
-      createdAt,
-    }));
-    return post(`/api/documents/${id}/apply`, { marks: wire, options, searchTerms: searchTerms(marks) });
+    return post(`/api/documents/${id}/apply`, { marks: wireMarks(marks), options, searchTerms: searchTerms(marks) });
+  },
+
+  /** Download a copy of the original carrying the marks as unapplied /Redact annotations. */
+  async exportMarked(id: string, filename: string, marks: Mark[]): Promise<void> {
+    const res = await request(`/api/documents/${id}/marked`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ marks: wireMarks(marks) }),
+    });
+    saveBlob(await res.blob(), attachmentName(res) ?? filename.replace(/\.pdf$/i, "") + "_marked.pdf");
   },
 
   /** Fetch the output (the token must go in a header) and hand it to the browser as a download. */

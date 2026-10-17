@@ -67,7 +67,7 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
   async function download(output: OutputInfo) {
     try {
       await api.download(output);
-      useMarks.getState().markApplied();
+      useMarks.getState().markSaved();
       setPhase({ name: "done", output, downloaded: true });
     } catch (e) {
       const message = e instanceof ApiError ? e.message : String(e);

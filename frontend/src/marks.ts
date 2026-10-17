@@ -18,23 +18,31 @@ export const DEFAULT_APPEARANCE: Appearance = {
   repeat: false,
 };
 
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** Whether `a` is a complete appearance the server accepts. */
+export function isAppearance(a: unknown): a is Appearance {
+  if (!a || typeof a !== "object") return false;
+  const v = a as Record<string, unknown>;
+  return (
+    (v.fill === null || (typeof v.fill === "string" && HEX.test(v.fill))) &&
+    typeof v.textColor === "string" &&
+    HEX.test(v.textColor) &&
+    typeof v.overlayText === "string" &&
+    v.overlayText.length <= 200 &&
+    (v.fontSize === null || (typeof v.fontSize === "number" && v.fontSize >= 4 && v.fontSize <= 72)) &&
+    ["left", "center", "right"].includes(v.align as string) &&
+    ["helv", "tiro", "cour"].includes(v.font as string) &&
+    typeof v.repeat === "boolean"
+  );
+}
+
 function loadDefaults(): Appearance {
   try {
     const saved = JSON.parse(localStorage.getItem(DEFAULTS_KEY) ?? "null");
     if (saved && typeof saved === "object") {
-      const merged = { ...DEFAULT_APPEARANCE, ...saved } as Appearance;
-      const hex = /^#[0-9a-f]{6}$/i;
-      if (
-        (merged.fill === null || hex.test(merged.fill)) &&
-        hex.test(merged.textColor) &&
-        typeof merged.overlayText === "string" &&
-        (merged.fontSize === null || (merged.fontSize >= 4 && merged.fontSize <= 72)) &&
-        ["left", "center", "right"].includes(merged.align) &&
-        ["helv", "tiro", "cour"].includes(merged.font) &&
-        typeof merged.repeat === "boolean"
-      ) {
-        return merged;
-      }
+      const merged = { ...DEFAULT_APPEARANCE, ...saved };
+      if (isAppearance(merged)) return merged;
     }
   } catch {
     /* ignore unreadable settings */
@@ -64,13 +72,15 @@ interface MarksState {
   preview: boolean;
   /** Bumped on every change to the marks. */
   revision: number;
-  /** Revision of the marks last applied to produce a redacted copy. */
-  appliedRevision: number;
+  /** Revision of the marks last applied, saved as a project or exported as annotations. */
+  savedRevision: number;
 
   /** Add marks (selecting them), optionally replacing others in the same undo step.
    * Additions with the same `key` in quick succession form one undo step. */
   addMarks(items: NewMark[], replace?: string[], key?: string): Mark[];
   removeMarks(ids: string[]): void;
+  /** Replace all marks: as one undo step, or as the document's starting point (no history). */
+  load(marks: Mark[], undoable: boolean): void;
   /** Change marks; rapid changes with the same `key` form one undo step. */
   updateMarks(ids: string[], change: (mark: Mark) => Mark, key?: string): void;
   setAppearance(ids: string[], patch: Partial<Appearance>, key?: string): void;
@@ -80,7 +90,8 @@ interface MarksState {
   setTool(tool: Tool): void;
   setDefaults(patch: Partial<Appearance>): void;
   togglePreview(): void;
-  markApplied(): void;
+  /** Record that the marks (as of `revision`, by default the current one) are safely kept. */
+  markSaved(revision?: number): void;
   reset(): void;
 }
 
@@ -125,7 +136,7 @@ export const useMarks = create<MarksState>()((set, get) => {
     defaults: loadDefaults(),
     preview: false,
     revision: 0,
-    appliedRevision: 0,
+    savedRevision: 0,
 
     addMarks(items, replace = [], key) {
       const createdAt = new Date().toISOString();
@@ -152,6 +163,15 @@ export const useMarks = create<MarksState>()((set, get) => {
       const drop = new Set(ids);
       if (!get().marks.some((m) => drop.has(m.id))) return;
       commit(get().marks.filter((m) => !drop.has(m.id)));
+    },
+
+    load(marks, undoable) {
+      if (undoable) {
+        commit(marks);
+        set({ selection: [] });
+      } else {
+        set({ marks, selection: [], past: [], future: [], lastChange: null, revision: 0, savedRevision: 0 });
+      }
     },
 
     updateMarks(ids, change, key) {
@@ -211,8 +231,8 @@ export const useMarks = create<MarksState>()((set, get) => {
       set({ preview: !get().preview });
     },
 
-    markApplied() {
-      set({ appliedRevision: get().revision });
+    markSaved(revision = get().revision) {
+      set({ savedRevision: revision });
     },
 
     reset() {
@@ -223,12 +243,13 @@ export const useMarks = create<MarksState>()((set, get) => {
         future: [],
         lastChange: null,
         revision: 0,
-        appliedRevision: 0,
+        savedRevision: 0,
       });
     },
   };
 });
 
 /** Marks exist that were changed since they were last applied. */
-export const hasUnappliedMarks = (s: Pick<MarksState, "marks" | "revision" | "appliedRevision">) =>
-  s.marks.length > 0 && s.revision !== s.appliedRevision;
+/** Whether closing would lose marks that were neither applied nor saved. */
+export const hasUnsavedMarks = (s: Pick<MarksState, "marks" | "revision" | "savedRevision">) =>
+  s.marks.length > 0 && s.revision !== s.savedRevision;

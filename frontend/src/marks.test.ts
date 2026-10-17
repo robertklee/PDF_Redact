@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { hasUnappliedMarks, useMarks } from "./marks";
+import { hasUnsavedMarks, isAppearance, useMarks } from "./marks";
 
 const store = () => useMarks.getState();
 const area = (page = 0) => ({ page, kind: "area" as const, rects: [[0, 0, 10, 10]] as [number, number, number, number][] });
@@ -71,13 +71,48 @@ describe("marks store", () => {
     expect(store().selection).toEqual([b.id]);
   });
 
-  it("tracks whether marks changed since they were applied", () => {
-    expect(hasUnappliedMarks(store())).toBe(false);
+  it("loads marks as an undo step or as the starting point", () => {
     const [a] = store().addMarks([area()]);
-    expect(hasUnappliedMarks(store())).toBe(true);
-    store().markApplied();
-    expect(hasUnappliedMarks(store())).toBe(false);
+    const loaded = { ...a, id: "loaded" };
+    store().load([loaded], true);
+    expect(store().marks).toEqual([loaded]);
+    expect(store().selection).toEqual([]);
+    expect(hasUnsavedMarks(store())).toBe(true);
+    store().undo();
+    expect(store().marks).toEqual([a]);
+
+    store().load([loaded], false);
+    expect(store().marks).toEqual([loaded]);
+    expect(store().past).toEqual([]);
+    expect(hasUnsavedMarks(store())).toBe(false); // the marks are still in the file
+    store().setAppearance(["loaded"], { fill: null });
+    expect(hasUnsavedMarks(store())).toBe(true);
+  });
+
+  it("tracks whether marks changed since they were applied or saved", () => {
+    expect(hasUnsavedMarks(store())).toBe(false);
+    const [a] = store().addMarks([area()]);
+    expect(hasUnsavedMarks(store())).toBe(true);
+    store().markSaved();
+    expect(hasUnsavedMarks(store())).toBe(false);
     store().removeMarks([a.id]);
-    expect(hasUnappliedMarks(store())).toBe(false); // nothing left to lose
+    expect(hasUnsavedMarks(store())).toBe(false); // nothing left to lose
+  });
+});
+
+describe("isAppearance", () => {
+  const ok = useMarks.getState().defaults;
+  it("accepts complete appearances", () => {
+    expect(isAppearance(ok)).toBe(true);
+    expect(isAppearance({ ...ok, fill: null, fontSize: 12 })).toBe(true);
+  });
+  it("rejects malformed ones", () => {
+    expect(isAppearance(null)).toBe(false);
+    expect(isAppearance({ ...ok, fill: "black" })).toBe(false);
+    expect(isAppearance({ ...ok, fontSize: 100 })).toBe(false);
+    expect(isAppearance({ ...ok, font: "comic" })).toBe(false);
+    expect(isAppearance({ ...ok, overlayText: "x".repeat(201) })).toBe(false);
+    const { repeat: _, ...partial } = ok;
+    expect(isAppearance(partial)).toBe(false);
   });
 });

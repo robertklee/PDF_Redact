@@ -37,7 +37,19 @@ export interface Mark {
   createdAt: string;
 }
 
-export type MarkSource = "manual" | "search" | "detect";
+export type MarkSource = "manual" | "search" | "detect" | "import";
+
+/** An unapplied /Redact annotation found in the file. */
+export interface ImportedMark {
+  id: string;
+  page: number;
+  kind: MarkKind;
+  rects: Rect[];
+  appearance: Appearance;
+  text: string;
+  angle: number | null;
+  source: "import";
+}
 
 export interface PageInfo {
   index: number;
@@ -61,6 +73,7 @@ export interface DocumentInfo {
   pageCount: number;
   pages: PageInfo[];
   notices: Notice[];
+  redactions: ImportedMark[];
 }
 
 export interface TextLine {
