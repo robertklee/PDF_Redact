@@ -117,6 +117,10 @@ export interface SanitizeAction {
   message: string;
 }
 
+export type ReportFormat = "html" | "json" | "csv";
+/** How the removed text appears in a report: its length, a SHA-256 hash, or the text itself. */
+export type ReportText = "length" | "hash" | "plain";
+
 export interface Check {
   name: string;
   status: "pass" | "warn" | "fail";

@@ -6,9 +6,12 @@ import type {
   Mark,
   OutputInfo,
   PageText,
+  ReportFormat,
+  ReportText,
   SearchRequest,
   SearchResponse,
 } from "./types";
+import { saveBlob } from "./lib/download";
 import { searchTerms } from "./lib/search";
 
 const TOKEN_KEY = "pdf-redact-token";
@@ -57,6 +60,14 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
   return res;
 }
 
+/** The filename in a Content-Disposition header. */
+export function attachmentName(res: Response): string | null {
+  const header = res.headers.get("Content-Disposition") ?? "";
+  const encoded = /filename\*=utf-8''([^;]+)/i.exec(header);
+  if (encoded) return decodeURIComponent(encoded[1]);
+  return /filename="([^"]+)"/i.exec(header)?.[1] ?? null;
+}
+
 async function json<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await request(path, init)).json() as Promise<T>;
 }
@@ -103,26 +114,28 @@ export const api = {
   },
 
   apply(id: string, marks: Mark[], options: ApplyOptions): Promise<OutputInfo> {
-    const wire = marks.map(({ id, page, kind, rects, appearance }) => ({
+    const wire = marks.map(({ id, page, kind, rects, appearance, source, category, createdAt }) => ({
       id,
       page,
       kind,
       rects: kind === "page" ? [] : rects,
       appearance,
+      source: source ?? "manual",
+      category: category?.slice(0, 100) ?? null,
+      createdAt,
     }));
     return post(`/api/documents/${id}/apply`, { marks: wire, options, searchTerms: searchTerms(marks) });
   },
 
   /** Fetch the output (the token must go in a header) and hand it to the browser as a download. */
   async download(output: OutputInfo): Promise<void> {
-    const blob = await (await request(`/api/outputs/${output.id}/file`)).blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = output.filename;
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    saveBlob(await (await request(`/api/outputs/${output.id}/file`)).blob(), output.filename);
+  },
+
+  /** Download the audit log or report of an output, showing the removed text as chosen. */
+  async downloadReport(output: OutputInfo, format: ReportFormat, text: ReportText): Promise<void> {
+    const params = new URLSearchParams({ format, text });
+    const res = await request(`/api/outputs/${output.id}/report?${params}`);
+    saveBlob(await res.blob(), attachmentName(res) ?? `redaction_report.${format}`);
   },
 };

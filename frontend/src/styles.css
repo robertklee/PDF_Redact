@@ -820,6 +820,21 @@ fieldset.options .sanitize-options label:has(select) {
   font-size: 13px;
 }
 
+.report-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.report-links select {
+  margin-left: auto;
+}
+
+.report-links p {
+  flex-basis: 100%;
+}
+
 /* Sidebar tabs */
 
 .tabs {

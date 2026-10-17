@@ -6,7 +6,7 @@ import { overlayDoesNotFit } from "../lib/overlay";
 import { formatPages } from "../lib/pages";
 import { useMarks } from "../marks";
 import { useStore } from "../store";
-import type { Check, GraphicsMode, ImageMode, Mark, OutputInfo } from "../types";
+import type { Check, GraphicsMode, ImageMode, Mark, OutputInfo, ReportFormat, ReportText } from "../types";
 import { HiddenInfoOptions } from "./HiddenInfoOptions";
 
 const IMAGE_MODES: { value: ImageMode; label: string; hint: string }[] = [
@@ -305,6 +305,7 @@ function Result(props: ResultProps) {
           have reviewed the problems and still want to download this file
         </label>
       )}
+      <ReportLinks output={output} />
       {downloadError && (
         <p className="error" role="alert">
           {downloadError}
@@ -324,6 +325,61 @@ function Result(props: ResultProps) {
         </button>
       </div>
     </>
+  );
+}
+
+const REPORTS: { format: ReportFormat; label: string; title: string }[] = [
+  { format: "html", label: "Report", title: "A printable summary (HTML)" },
+  { format: "json", label: "Audit log", title: "Everything recorded about this redaction (JSON)" },
+  { format: "csv", label: "CSV", title: "One row per mark, for spreadsheets" },
+];
+
+const REPORT_TEXT: { value: ReportText; label: string }[] = [
+  { value: "length", label: "Removed text: length only" },
+  { value: "hash", label: "Removed text: SHA-256 hash" },
+  { value: "plain", label: "Removed text: in full" },
+];
+
+function ReportLinks({ output }: { output: OutputInfo }) {
+  const [text, setText] = useState<ReportText>("length");
+  const [error, setError] = useState<string>();
+
+  async function download(format: ReportFormat) {
+    setError(undefined);
+    try {
+      await api.downloadReport(output, format, text);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    }
+  }
+
+  return (
+    <div className="report-links small">
+      <span className="muted">Download</span>
+      {REPORTS.map((r) => (
+        <button key={r.format} type="button" className="link" title={r.title} onClick={() => void download(r.format)}>
+          {r.label}
+        </button>
+      ))}
+      <select aria-label="Removed text in reports" value={text} onChange={(e) => setText(e.target.value as ReportText)}>
+        {REPORT_TEXT.map((t) => (
+          <option key={t.value} value={t.value}>
+            {t.label}
+          </option>
+        ))}
+      </select>
+      {text === "hash" && (
+        <p className="hint">Short values, such as account numbers, can be recovered from their hash.</p>
+      )}
+      {text === "plain" && (
+        <p className="hint warning">Reports will contain the redacted text. Keep them as safe as the original.</p>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 
