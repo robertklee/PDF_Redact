@@ -374,8 +374,43 @@ def test_residual_check_reports_unmarked_occurrences() -> None:
     out, _ = redact_bytes(data, marks)
     [check] = _residual(verify_bytes(out, marks, search_terms=terms))
     assert check.status == "pass"
-    assert check.message == "Marked search results appear nowhere else in the file (1 text checked)"
+    assert check.message == (
+        "Marked search results appear nowhere else in the text, bookmarks, comments, links, "
+        "form fields or document properties (1 text checked)"
+    )
     assert not _residual(verify_bytes(out, marks))
+
+
+def test_residual_check_searches_outside_the_page_text() -> None:
+    with pymupdf.open(stream=corpus.personal_info(), filetype="pdf") as doc:
+        doc.set_toc([[1, f"Case {SECRET}", 1]])
+        doc.set_metadata({"title": f"About {SECRET}"})
+        doc[1].add_text_annot((400, 400), f"See {SECRET}")
+        data = doc.tobytes()
+    marks, terms = _search_marks(data, SECRET)
+    out, _ = redact_bytes(data, marks)
+    [check] = _residual(verify_bytes(out, marks, search_terms=terms))
+    assert check.status == "warn" and check.page is None
+    assert check.message == (
+        f"Marked search result “{SECRET}” still appears in the bookmarks, the document "
+        "properties and a comment on page 2"
+    )
+    # Removing hidden information takes care of the comment and the properties.
+    options = RedactOptions(sanitize=SanitizeOptions())
+    out, _ = redact_bytes(data, marks, options)
+    [check] = _residual(verify_bytes(out, marks, options, search_terms=terms))
+    assert check.message == f"Marked search result “{SECRET}” still appears in the bookmarks"
+
+
+def test_residual_check_finds_clipped_and_hidden_layer_text() -> None:
+    options = RedactOptions(sanitize=SanitizeOptions(hidden_text=False))
+    out, _ = redact_bytes(corpus.clipped_text(), [], options)
+    [check] = _residual(verify_bytes(out, [], options, search_terms=[CLIPPED_SECRET]))
+    assert check.status == "warn" and check.page == 0
+
+    data = _hidden_layer_under_text()
+    [check] = _residual(verify_bytes(data, [], search_terms=[LAYER_SECRET]))
+    assert check.status == "warn" and check.page == 0
 
 
 def test_residual_check_handles_line_hyphenation() -> None:

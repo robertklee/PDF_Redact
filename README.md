@@ -33,7 +33,8 @@ See [PLAN.md](PLAN.md) for the feature specification and milestones.
   copy. The original file is never modified. Each result is verified (no text, image pixels or
   earlier file revisions left under any mark); downloading a file that fails verification needs
   explicit confirmation. Text marked from search results is also searched for across the whole
-  output, with a warning for any occurrence that was left unmarked.
+  output (page text, bookmarks, properties, comments, links and form fields), with a warning for
+  any occurrence that was left unmarked.
 - **Hidden information**: applying also removes metadata, comments, form data (flattened by
   default), attachments, links, JavaScript, thumbnails, hidden layers, hidden text (keeping OCR text
   over scans), and content outside the visible page area. Each option can be turned off; bookmarks

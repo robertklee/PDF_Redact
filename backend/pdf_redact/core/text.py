@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import pymupdf
@@ -142,6 +143,18 @@ def extract_lines(
         ]
         for n, (direction, chars) in enumerate(raw_lines(page, everywhere, include_clipped))
     ]
+
+
+@contextmanager
+def layers_shown(doc: pymupdf.Document) -> Iterator[pymupdf.Document]:
+    """`doc`, or a copy of its pages with every layer switched on if it has layers."""
+    if not has_layers(doc):
+        yield doc
+        return
+    with pymupdf.open() as copy:
+        # The copy has no /OCProperties, so all optional content in it is visible.
+        copy.insert_pdf(doc, annots=False, widgets=False, links=False)
+        yield copy
 
 
 def all_text_lines(page: pymupdf.Page) -> list[list[Char]]:

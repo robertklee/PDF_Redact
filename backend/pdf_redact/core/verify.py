@@ -25,7 +25,7 @@ from .overlay import drawable
 from .redact import Mark, RedactOptions, mark_regions, open_pdf
 from .sanitize import sanitize_findings
 from .search import normalize, page_indexes
-from .text import all_text_lines, line_texts
+from .text import all_text_lines, layers_shown, line_texts
 
 Status = Literal["pass", "warn", "fail"]
 _SEVERITY = {"pass": 0, "warn": 1, "fail": 2}
@@ -256,14 +256,67 @@ class _PageVerifier:
         return problems
 
 
+def _join(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _choice_texts(values) -> list[str]:
+    return [
+        str(v) for value in values or () for v in (value if isinstance(value, tuple) else [value])
+    ]
+
+
+def _document_places(doc: pymupdf.Document) -> dict[str, list[str]]:
+    """Document-level text that is not page content, by where a viewer shows it."""
+    properties = [v for v in doc.metadata.values() if isinstance(v, str)]
+    properties.append(doc.get_xml_metadata())
+    attachments = []
+    for i in range(doc.embfile_count()):
+        info = doc.embfile_info(i)
+        attachments += [info.get(k) or "" for k in ("name", "filename", "ufilename", "description")]
+    return {
+        "the bookmarks": [entry[1] for entry in doc.get_toc(simple=True)],
+        "the document properties": properties,
+        "the page labels": [label.get("prefix") or "" for label in doc.get_page_labels()],
+        "the attachment names": attachments,
+    }
+
+
+def _page_places(page: pymupdf.Page) -> dict[str, list[str]]:
+    """Text in a page's comments, links and form fields."""
+    comments = [
+        annot.info.get(key) or ""
+        for annot in page.annots()
+        for key in ("content", "title", "subject")
+    ]
+    links = [link.get("uri") or "" for link in page.get_links()]
+    fields = []
+    for widget in page.widgets():
+        value = widget.field_value
+        fields += [value if isinstance(value, str) else "", widget.field_label or ""]
+        fields += _choice_texts(widget.choice_values)
+    return {"comment": comments, "link": links, "form field": fields}
+
+
+def _where(pages: list[int], places: list[str]) -> str:
+    parts = []
+    if pages:
+        parts.append(f"on {_pages(pages)}")
+    if places:
+        parts.append(f"in {_join(places)}")
+    return " and ".join(parts)
+
+
 def residual_checks(
     doc: pymupdf.Document, terms: Iterable[str], overlays: Iterable[str]
 ) -> list[Check]:
     """Search the whole output for strings that were marked from search or detection results.
 
-    A remaining occurrence is a warning rather than a failure: the user may have chosen to keep it.
-    Words hyphenated across lines in either the term or the page are also compared joined up.
-    Overlay texts written by the redaction are ignored.
+    Besides the page text (including text hidden by clip paths or switched-off layers), this looks
+    at bookmarks, document properties, page labels, attachment names, comments, links and form
+    fields. A remaining occurrence is a warning rather than a failure: the user may have chosen to
+    keep it. Words hyphenated across lines in either the term or the page are also compared joined
+    up. Overlay texts written by the redaction are ignored.
     """
     variants: dict[str, set[str]] = {}
     for term in terms:
@@ -274,38 +327,65 @@ def residual_checks(
         return []
     masks = sorted({_fold(o) for o in overlays} - {""}, key=len, reverse=True)
     texts: list[str] = []
-    for page in doc:
-        payload = [{"chars": list(line)} for line in line_texts(page)]
-        parts = []
-        for index in page_indexes(payload):
-            text = _fold(index.text)
-            for mask in masks:
-                text = text.replace(mask, "\0")
-            parts.append(text)
-        texts.append("\0".join(parts))
+    with layers_shown(doc) as shown:
+        for page in shown:
+            payload = [{"chars": list(line)} for line in line_texts(page, include_clipped=True)]
+            parts = []
+            for index in page_indexes(payload):
+                text = _fold(index.text)
+                for mask in masks:
+                    text = text.replace(mask, "\0")
+                parts.append(text)
+            texts.append("\0".join(parts))
 
-    found = [
-        (term, [n for n, text in enumerate(texts) if any(f in text for f in forms)])
-        for term, forms in variants.items()
+    def folded(values: list[str]) -> str:
+        return "\0".join(_fold(v) for v in values if v)
+
+    documents = {name: folded(values) for name, values in _document_places(doc).items()}
+    # (kind, page number, texts of each item) for every page item that has text.
+    items = [
+        (kind, page.number, text)
+        for page in doc
+        for kind, values in _page_places(page).items()
+        for text in [_fold(v) for v in values]
+        if text
     ]
-    found = [(term, where) for term, where in found if where]
+
+    found: list[tuple[str, list[int], list[str]]] = []
+    for term, forms in variants.items():
+
+        def has(text: str, forms: set[str] = forms) -> bool:
+            return any(f in text for f in forms)
+
+        pages = [n for n, text in enumerate(texts) if has(text)]
+        places = [name for name, text in documents.items() if has(text)]
+        for kind in ("comment", "link", "form field"):
+            hits = [pno for k, pno, text in items if k == kind and has(text)]
+            if len(hits) == 1:
+                places.append(f"a {kind} on {_pages(hits)}")
+            elif hits:
+                places.append(f"{kind}s on {_pages(sorted(set(hits)))}")
+        if pages or places:
+            found.append((term, pages, places))
+
     if not found:
         count = f"{len(variants)} text{'s' if len(variants) != 1 else ''} checked"
         return [
             Check(
                 "residual-text",
                 "pass",
-                f"Marked search results appear nowhere else in the file ({count})",
+                "Marked search results appear nowhere else in the text, bookmarks, comments, "
+                f"links, form fields or document properties ({count})",
             )
         ]
     checks = [
         Check(
             "residual-text",
             "warn",
-            f"Marked search result {_quote(term)} still appears on {_pages(where)}",
-            where[0] if len(where) == 1 else None,
+            f"Marked search result {_quote(term)} still appears {_where(pages, places)}",
+            pages[0] if len(pages) == 1 and not places else None,
         )
-        for term, where in found[:MAX_RESIDUAL_CHECKS]
+        for term, pages, places in found[:MAX_RESIDUAL_CHECKS]
     ]
     if len(found) > MAX_RESIDUAL_CHECKS:
         rest = len(found) - MAX_RESIDUAL_CHECKS
