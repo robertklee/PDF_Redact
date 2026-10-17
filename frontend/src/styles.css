@@ -700,6 +700,41 @@ fieldset.options label {
   white-space: nowrap;
 }
 
+fieldset.options label.nested {
+  padding-left: 22px;
+}
+
+.sanitize-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.sanitize-options[open] {
+  padding-bottom: 2px;
+}
+
+.sanitize-options > summary {
+  cursor: pointer;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+fieldset.options .sanitize-options label:has(select) {
+  align-items: center;
+  padding-left: 22px;
+}
+
+.sanitize-options select {
+  width: 180px;
+  margin-left: auto;
+}
+
+.sanitize-options > button.link {
+  align-self: flex-start;
+}
+
 .verdict {
   padding: 10px 12px;
   border-radius: 8px;

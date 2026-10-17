@@ -60,10 +60,13 @@ export function RedactionBar() {
       <button
         className="danger"
         onClick={() => setDialog("apply")}
-        disabled={!markCount}
-        title="Remove the marked content and save a redacted copy"
+        title={
+          markCount
+            ? "Remove the marked content and save a redacted copy"
+            : "Remove metadata, comments and other hidden information and save a cleaned copy"
+        }
       >
-        Apply {markCount > 0 && `${markCount} `}redaction{markCount === 1 ? "" : "s"}…
+        {markCount ? `Apply ${markCount} redaction${markCount === 1 ? "" : "s"}…` : "Remove hidden information…"}
       </button>
       {dialog === "pages" && <PageMarkDialog onClose={closeDialog} />}
       {dialog === "apply" && <ApplyDialog onClose={closeDialog} />}

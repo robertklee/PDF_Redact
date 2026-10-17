@@ -83,9 +83,38 @@ export interface PageText {
 export type ImageMode = "pixels" | "remove" | "none";
 export type GraphicsMode = "covered" | "touched" | "none";
 
+export type AnnotationMode = "remove" | "flatten" | "keep";
+export type FormMode = "flatten" | "reset" | "keep";
+
+/** Hidden information to remove from the whole document when applying. */
+export interface SanitizeOptions {
+  metadata: boolean;
+  annotations: AnnotationMode;
+  forms: FormMode;
+  attachments: boolean;
+  links: boolean;
+  javascript: boolean;
+  thumbnails: boolean;
+  bookmarks: boolean;
+  pageLabels: boolean;
+  layers: boolean;
+  outsideCrop: boolean;
+  hiddenText: boolean;
+  /** Keep invisible OCR text over scanned images when removing hidden text. */
+  keepOcrText: boolean;
+}
+
 export interface ApplyOptions {
   images: ImageMode;
   graphics: GraphicsMode;
+  /** null removes only the marked content. */
+  sanitize: SanitizeOptions | null;
+}
+
+export interface SanitizeAction {
+  code: string;
+  count: number;
+  message: string;
 }
 
 export interface Check {
@@ -115,6 +144,8 @@ export interface OutputInfo {
     replacementTextRemoved: number;
     /** Annotations, form fields and links that overlapped a mark and were deleted. */
     annotationsRemoved: number;
+    /** One entry per hidden-information option that was enabled. */
+    sanitized: SanitizeAction[];
   };
   verification: {
     passed: boolean;

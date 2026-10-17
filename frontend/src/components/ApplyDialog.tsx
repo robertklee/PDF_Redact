@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { api, ApiError } from "../api";
+import { type ApplySettings, applyOptions, loadSettings, saveSettings } from "../lib/applySettings";
 import { describeMark, formatBytes, KIND_LABELS, plural } from "../lib/format";
 import { overlayDoesNotFit } from "../lib/overlay";
 import { formatPages } from "../lib/pages";
 import { useMarks } from "../marks";
 import { useStore } from "../store";
-import type { ApplyOptions, Check, GraphicsMode, ImageMode, Mark, OutputInfo } from "../types";
+import type { Check, GraphicsMode, ImageMode, Mark, OutputInfo } from "../types";
+import { HiddenInfoOptions } from "./HiddenInfoOptions";
 
 const IMAGE_MODES: { value: ImageMode; label: string; hint: string }[] = [
   { value: "pixels", label: "Blank the covered pixels", hint: "Recommended" },
@@ -24,11 +26,14 @@ type Phase =
   | { name: "working" }
   | { name: "done"; output: OutputInfo; downloaded: boolean; downloadError?: string };
 
-/** Apply the marks on the server, show the verification report and offer the result for download. */
+/**
+ * Apply the marks on the server, show the verification report and offer the result for download.
+ * Without marks, only hidden information is removed.
+ */
 export function ApplyDialog({ onClose }: { onClose: () => void }) {
   const doc = useStore((s) => s.doc)!;
   const marks = useMarks((s) => s.marks);
-  const [options, setOptions] = useState<ApplyOptions>({ images: "pixels", graphics: "covered" });
+  const [settings, setSettingsState] = useState(loadSettings);
   const [phase, setPhase] = useState<Phase>({ name: "confirm" });
   const [override, setOverride] = useState(false);
 
@@ -41,11 +46,18 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
     return { kinds, pages, unfilled, crowded };
   }, [marks]);
 
+  const withMarks = marks.length > 0;
+
+  function setSettings(next: ApplySettings) {
+    setSettingsState(next);
+    saveSettings(next);
+  }
+
   async function apply() {
     setPhase({ name: "working" });
     setOverride(false);
     try {
-      const output = await api.apply(doc.id, marks, options);
+      const output = await api.apply(doc.id, marks, applyOptions(settings, marks.length));
       setPhase({ name: "done", output, downloaded: false });
     } catch (e) {
       setPhase({ name: "confirm", error: e instanceof ApiError ? e.message : String(e) });
@@ -96,21 +108,30 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
           />
         ) : (
           <>
-            <h2 id="apply-title">Apply redactions</h2>
-            <p>
-              {plural(marks.length, "mark")} on {summary.pages.length === 1 ? "page" : "pages"}{" "}
-              {formatPages(summary.pages)} (
-              {(["text", "area", "page"] as const)
-                .filter((k) => summary.kinds[k])
-                .map((k) => `${summary.kinds[k]} ${KIND_LABELS[k].toLowerCase()}`)
-                .join(", ")}
-              )
-            </p>
-            <p className="muted small">
-              Marked text, image pixels and graphics are permanently removed from a new copy of{" "}
-              <strong>{doc.filename}</strong>. The original file is not changed, and you can keep
-              editing marks and apply again.
-            </p>
+            <h2 id="apply-title">{withMarks ? "Apply redactions" : "Remove hidden information"}</h2>
+            {withMarks ? (
+              <>
+                <p>
+                  {plural(marks.length, "mark")} on {summary.pages.length === 1 ? "page" : "pages"}{" "}
+                  {formatPages(summary.pages)} (
+                  {(["text", "area", "page"] as const)
+                    .filter((k) => summary.kinds[k])
+                    .map((k) => `${summary.kinds[k]} ${KIND_LABELS[k].toLowerCase()}`)
+                    .join(", ")}
+                  )
+                </p>
+                <p className="muted small">
+                  Marked text, image pixels and graphics are permanently removed from a new copy of{" "}
+                  <strong>{doc.filename}</strong>. The original file is not changed, and you can keep
+                  editing marks and apply again.
+                </p>
+              </>
+            ) : (
+              <p className="muted small">
+                There are no marks, so only hidden information is removed, in a new copy of{" "}
+                <strong>{doc.filename}</strong>. The original file is not changed.
+              </p>
+            )}
             {summary.unfilled > 0 && (
               <p className="hint warning">
                 {plural(summary.unfilled, "mark has", "marks have")} no fill: the content is removed
@@ -123,36 +144,48 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
                 out there. Shorten the text or enlarge those marks to show it.
               </p>
             )}
-            <fieldset className="options" disabled={busy}>
-              <legend>Images under marks</legend>
-              {IMAGE_MODES.map((m) => (
-                <label key={m.value}>
-                  <input
-                    type="radio"
-                    name="images"
-                    checked={options.images === m.value}
-                    onChange={() => setOptions({ ...options, images: m.value })}
-                  />
-                  {m.label}
-                  {m.hint && <span className="muted small"> — {m.hint}</span>}
-                </label>
-              ))}
-            </fieldset>
-            <fieldset className="options" disabled={busy}>
-              <legend>Vector graphics under marks</legend>
-              {GRAPHICS_MODES.map((m) => (
-                <label key={m.value}>
-                  <input
-                    type="radio"
-                    name="graphics"
-                    checked={options.graphics === m.value}
-                    onChange={() => setOptions({ ...options, graphics: m.value })}
-                  />
-                  {m.label}
-                  {m.hint && <span className="muted small"> — {m.hint}</span>}
-                </label>
-              ))}
-            </fieldset>
+            {withMarks && (
+              <>
+                <fieldset className="options" disabled={busy}>
+                  <legend>Images under marks</legend>
+                  {IMAGE_MODES.map((m) => (
+                    <label key={m.value}>
+                      <input
+                        type="radio"
+                        name="images"
+                        checked={settings.images === m.value}
+                        onChange={() => setSettings({ ...settings, images: m.value })}
+                      />
+                      {m.label}
+                      {m.hint && <span className="muted small"> — {m.hint}</span>}
+                    </label>
+                  ))}
+                </fieldset>
+                <fieldset className="options" disabled={busy}>
+                  <legend>Vector graphics under marks</legend>
+                  {GRAPHICS_MODES.map((m) => (
+                    <label key={m.value}>
+                      <input
+                        type="radio"
+                        name="graphics"
+                        checked={settings.graphics === m.value}
+                        onChange={() => setSettings({ ...settings, graphics: m.value })}
+                      />
+                      {m.label}
+                      {m.hint && <span className="muted small"> — {m.hint}</span>}
+                    </label>
+                  ))}
+                </fieldset>
+              </>
+            )}
+            <HiddenInfoOptions
+              optional={withMarks}
+              enabled={settings.removeHidden || !withMarks}
+              options={settings.sanitize}
+              disabled={busy}
+              onEnabledChange={(removeHidden) => setSettings({ ...settings, removeHidden })}
+              onChange={(sanitize) => setSettings({ ...settings, sanitize })}
+            />
             {phase.name === "confirm" && phase.error && (
               <p className="error" role="alert">
                 {phase.error}
@@ -166,9 +199,9 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
                 className="danger"
                 autoFocus
                 onClick={() => void apply()}
-                disabled={busy || !marks.length}
+                disabled={busy}
               >
-                {busy ? "Applying…" : "Apply redactions"}
+                {busy ? "Applying…" : withMarks ? "Apply redactions" : "Remove hidden information"}
               </button>
             </div>
           </>
@@ -201,20 +234,30 @@ function Result(props: ResultProps) {
     .filter((c) => c.status !== "pass")
     .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || (a.page ?? -1) - (b.page ?? -1));
   const canDownload = v.passed || override;
+  const redacted = stats.marks > 0;
+  const failed = v.checks.filter((c) => c.status === "fail");
+  const missed = failed.length && failed.every((c) => c.name.startsWith("sanitize-")) ? "hidden information" : "marked content";
+  const sanitized = stats.sanitized.filter((a) => a.count > 0);
 
   return (
     <>
-      <h2 id="apply-title">{v.passed ? "Redactions applied" : "Verification found problems"}</h2>
+      <h2 id="apply-title">
+        {!v.passed ? "Verification found problems" : redacted ? "Redactions applied" : "Hidden information removed"}
+      </h2>
       <div className={`verdict ${v.passed ? (issues.length ? "warn" : "pass") : "fail"}`}>
         {v.passed
           ? issues.length
-            ? `Marked text was removed. ${plural(issues.length, "warning")} to review.`
-            : "Verified: the marked content is no longer in the file."
-          : `${plural(v.counts.fail, "check")} failed. Some marked content may still be in the file.`}
+            ? `${redacted ? "Marked text" : "Hidden information"} was removed. ${plural(issues.length, "warning")} to review.`
+            : `Verified: the ${redacted ? "marked content" : "hidden information"} is no longer in the file.`
+          : `${plural(v.counts.fail, "check")} failed. Some ${missed} may still be in the file.`}
       </div>
       <ul className="stats small">
-        <li>{plural(stats.marks, "mark")} applied on {plural(stats.pages.length, "page")}</li>
-        <li>{plural(stats.glyphsRemoved, "character")} removed</li>
+        {redacted && (
+          <>
+            <li>{plural(stats.marks, "mark")} applied on {plural(stats.pages.length, "page")}</li>
+            <li>{plural(stats.glyphsRemoved, "character")} removed</li>
+          </>
+        )}
         {stats.safetyPassGlyphs > 0 && (
           <li>{plural(stats.safetyPassGlyphs, "extra character")} removed by the safety pass</li>
         )}
@@ -239,6 +282,10 @@ function Result(props: ResultProps) {
             fit
           </li>
         )}
+        {sanitized.map((a) => (
+          <li key={a.code}>{a.message}</li>
+        ))}
+        {stats.sanitized.length > 0 && !sanitized.length && <li>No hidden information found</li>}
         <li>
           {plural(v.counts.pass, "check")} passed
           {v.counts.warn > 0 && `, ${plural(v.counts.warn, "warning")}`}
