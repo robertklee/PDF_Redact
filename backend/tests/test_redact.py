@@ -10,14 +10,16 @@ from pdf_redact.core.redact import (
     RedactOptions,
     redact_bytes,
 )
+from pdf_redact.core.sanitize import SanitizeOptions
 from pdf_redact.core.search import compile_query, find
 from pdf_redact.core.text import extract_lines, line_texts, page_text_payload
 from pdf_redact.core.verify import verify_bytes
 from tests import corpus
-from tests.corpus import ABOVE, BELOW, SECRET
+from tests.corpus import ABOVE, BELOW, CLIPPED_SECRET, CLIPPED_VISIBLE, LAYER_SECRET, SECRET
 from tests.helpers import (
     area_mark,
     display_hits,
+    every_text,
     leaks,
     mupdf_text,
     pypdf_text,
@@ -283,6 +285,60 @@ def test_verification_flags_unredacted_text() -> None:
     marks = [text_mark(display_hits(data, SECRET))]
     result = verify_bytes(data, marks)
     assert not result.passed
+    assert "text character" in _mark_check(result).message
+
+
+def _clipped_cell(data: bytes) -> tuple[float, float, float, float]:
+    """Display rect from the visible "SSN" of the clipped cell to past its hidden end."""
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        [line] = [
+            line
+            for line in extract_lines(doc[0])
+            if "".join(ch.c for ch in line).startswith(CLIPPED_VISIBLE)
+        ]
+        ssn = union([ch.box for ch in line[len(CLIPPED_VISIBLE) - 3 : len(CLIPPED_VISIBLE)]])
+        return (ssn.x0, ssn.y0, ssn.x0 + 200, ssn.y1)
+
+
+def test_text_marks_remove_clipped_text_under_them() -> None:
+    data = corpus.clipped_text()
+    cell = _clipped_cell(data)
+    hidden_part = (cell[0] + 30, cell[1], cell[2], cell[3])
+    # Verification sees the clipped glyphs too.
+    assert not verify_bytes(data, [area_mark(hidden_part)]).passed
+
+    out, stats, verification = _redact_and_verify(data, [text_mark([cell])])
+    assert verification.passed and not stats.text_marks_as_area
+    assert CLIPPED_SECRET not in every_text(out) and "overflow" not in every_text(out)
+    assert "Name: Jane Doe," in mupdf_text(out) and SECRET in mupdf_text(out)
+
+
+def _hidden_layer_under_text(visible: bool = True) -> bytes:
+    """Small text in a switched-off layer, inside the box of visible text."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    layer = doc.add_ocg("Draft", on=False)
+    if visible:
+        page.insert_text((72, 100), "Visible public text", fontsize=12)
+    page.insert_text((80, 101.5), LAYER_SECRET, fontsize=4, oc=layer)
+    page.insert_text((72, 140), "Unrelated line", fontsize=12)
+    return doc.tobytes()
+
+
+@pytest.mark.parametrize("sanitize", [None, SanitizeOptions(layers=False)])
+def test_text_marks_remove_hidden_layer_text_under_them(sanitize) -> None:
+    data = _hidden_layer_under_text()
+    assert LAYER_SECRET in every_text(data) and LAYER_SECRET not in mupdf_text(data)
+    mark = text_mark(display_hits(data, "Visible public text"))
+    out, _, verification = _redact_and_verify(data, [mark], RedactOptions(sanitize=sanitize))
+    assert verification.passed
+    assert LAYER_SECRET not in every_text(out) and "Visible" not in every_text(out)
+    assert "Unrelated line" in mupdf_text(out)
+
+
+def test_verification_sees_hidden_layer_text_under_a_mark() -> None:
+    data = _hidden_layer_under_text(visible=False)
+    result = verify_bytes(data, [area_mark((70, 90, 200, 104))])
     assert "text character" in _mark_check(result).message
 
 

@@ -8,8 +8,8 @@ from pdf_redact.core.redact import RedactOptions, redact_bytes
 from pdf_redact.core.sanitize import SanitizeOptions
 from pdf_redact.core.verify import verify_bytes
 from tests import corpus
-from tests.corpus import ABOVE, BELOW, SECRET, SECRET_LINE
-from tests.helpers import area_mark, display_hits, leaks, mupdf_text, text_mark
+from tests.corpus import ABOVE, BELOW, CLIPPED_SECRET, CLIPPED_VISIBLE, SECRET, SECRET_LINE
+from tests.helpers import area_mark, display_hits, every_text, leaks, mupdf_text, text_mark
 
 ONLY_PAGE_CONTENT = SanitizeOptions(
     metadata=False,
@@ -320,6 +320,20 @@ def test_original_with_hidden_text_fails_the_check() -> None:
     check = _check(verification, "hidden-text")
     assert check.status == "fail"
     assert "hidden character" in check.message
+
+
+def test_text_hidden_by_a_clip_path_is_hidden_text() -> None:
+    data = corpus.clipped_text()
+    assert CLIPPED_SECRET in every_text(data) and CLIPPED_SECRET not in mupdf_text(data)
+    original = verify_bytes(data, [], RedactOptions(sanitize=ONLY_PAGE_CONTENT))
+    assert _check(original, "hidden-text").status == "fail"
+
+    out, stats, verification = _sanitize(data, ONLY_PAGE_CONTENT)
+    assert _check(verification, "hidden-text").status == "pass"
+    assert _action(stats, "hidden-text").count == len(f"{CLIPPED_SECRET}overflow")
+    assert not leaks(out, CLIPPED_SECRET) and "overflow" not in every_text(out)
+    assert CLIPPED_VISIBLE in mupdf_text(out) and SECRET_LINE in mupdf_text(out)
+    assert _looks_the_same(out, data)
 
 
 def test_ocr_text_layer_is_kept_unless_asked() -> None:

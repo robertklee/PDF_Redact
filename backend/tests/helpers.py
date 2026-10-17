@@ -27,6 +27,16 @@ def mupdf_text(data: bytes, password: str | None = None) -> str:
         return "\n".join(page.get_text() for page in doc)
 
 
+def every_text(data: bytes, password: str | None = None) -> str:
+    """All the text MuPDF finds, including text hidden by clip paths or switched-off layers."""
+    with pymupdf.open(stream=data, filetype="pdf") as doc, pymupdf.open() as copy:
+        if doc.is_encrypted:
+            doc.authenticate(password or "")
+        # The copy has no /OCProperties, so all optional content in it is visible.
+        copy.insert_pdf(doc)
+        return "\n".join(page.get_text(flags=0) for page in copy)
+
+
 def raw_contains(data: bytes, needle: str) -> bool:
     """Literal or hex-encoded occurrence anywhere in the raw file bytes (all revisions)."""
     lowered = data.lower()

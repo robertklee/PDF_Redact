@@ -25,7 +25,7 @@ from .overlay import drawable
 from .redact import Mark, RedactOptions, mark_regions, open_pdf
 from .sanitize import sanitize_findings
 from .search import normalize, page_indexes
-from .text import extract_lines, line_texts
+from .text import all_text_lines, line_texts
 
 Status = Literal["pass", "warn", "fail"]
 _SEVERITY = {"pass": 0, "warn": 1, "fail": 2}
@@ -128,7 +128,7 @@ class _PageVerifier:
         self, doc: pymupdf.Document, page: pymupdf.Page, marks: list[Mark], options: RedactOptions
     ):
         self.doc, self.page, self.marks, self.options = doc, page, marks, options
-        self.chars = [ch for line in extract_lines(page) for ch in line]
+        self.chars = [ch for line in all_text_lines(page) for ch in line]
         self.overlays = sorted(
             {
                 _squash(drawable(m.appearance.overlay_text))

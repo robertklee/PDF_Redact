@@ -46,11 +46,14 @@ def _pixel_box(box: Box, m: pymupdf.Matrix, width: int, height: int) -> tuple[in
 
 
 def _unseen(page: pymupdf.Page, keep_ocr: bool) -> list[Char]:
-    """The chars that do not change how `page` (a scratch copy, modified here) renders."""
+    """The chars that do not change how `page` (a scratch copy, modified here) renders.
+
+    Glyphs that a clip path hides entirely are included: they do not change the rendering either.
+    """
     # Chars without a glyph (/ActualText beyond the glyph count) have zero-width boxes.
     chars: list[tuple[int, tuple[float, float], RawChar]] = [
         (n, direction, ch)
-        for n, (direction, line) in enumerate(raw_lines(page))
+        for n, (direction, line) in enumerate(raw_lines(page, include_clipped=True))
         for ch in line
         if not ch[0].isspace() and ch[1][2] > ch[1][0] and ch[1][3] > ch[1][1]
     ]
@@ -99,7 +102,9 @@ def hidden_text(doc: pymupdf.Document, keep_ocr: bool = True) -> dict[int, list[
     found: dict[int, list[Char]] = {}
     if not any(page.get_texttrace() for page in doc):
         return found
-    # Annotations and form fields are left out: their text is not page content.
+    # Annotations and form fields are left out: their text is not page content. The copy has no
+    # /OCProperties, so text in layers that are switched off counts as seen; removing layers
+    # takes care of it.
     with pymupdf.open() as scratch:
         scratch.insert_pdf(doc, annots=False, widgets=False, links=False)
         for page in scratch:

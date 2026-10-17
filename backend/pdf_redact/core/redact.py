@@ -30,7 +30,7 @@ from .objects import delete_key, strip_page_text_properties, strip_struct_text
 from .overlay import DIRECTIONS, Appearance, drawable, layout_overlay
 from .removal import apply_regions, removal_bands, remove_glyphs
 from .sanitize import SanitizeAction, SanitizeOptions, sanitize_document
-from .text import Char, extract_lines
+from .text import Char, all_text_lines, extract_lines
 
 MarkKind = Literal["text", "area", "page"]
 ImageMode = Literal["pixels", "remove", "none"]
@@ -245,10 +245,11 @@ def redact_page(
             areas.append((full_extent(page), None))
 
     if text_regions:
-        targets = selected_chars(lines, text_regions)
+        # Including glyphs the user cannot see: clipped away, or in a layer that is switched off.
+        targets = selected_chars(all_text_lines(page), text_regions)
         stats.glyphs_removed += len(targets)
         remove_glyphs(page, removal_bands(targets))
-        survivors = selected_chars(extract_lines(page), text_regions)
+        survivors = selected_chars(all_text_lines(page), text_regions)
         if survivors:
             stats.safety_pass_glyphs += len(survivors)
             remove_glyphs(page, [ch.bbox for ch in survivors])

@@ -7,7 +7,10 @@ from dataclasses import dataclass
 
 import pymupdf
 
-# Raw-dict defaults minus embedded image data (we only need text here).
+from .layers import has_layers
+
+# Raw-dict defaults minus embedded image data (we only need text here). The defaults leave out
+# glyphs that a clip path hides entirely, which is what the user sees.
 TEXT_FLAGS = pymupdf.TEXTFLAGS_RAWDICT & ~pymupdf.TEXT_PRESERVE_IMAGES
 
 REPLACEMENT_CHAR = "\ufffd"
@@ -91,14 +94,19 @@ def _invisible(span: dict) -> bool:
 RawChar = tuple[str, Box, Box, tuple[float, float], float, bool]
 
 
+def _flags(include_clipped: bool) -> int:
+    return TEXT_FLAGS & ~pymupdf.TEXT_CLIP if include_clipped else TEXT_FLAGS
+
+
 def raw_lines(
-    page: pymupdf.Page, everywhere: bool = False
+    page: pymupdf.Page, everywhere: bool = False, include_clipped: bool = False
 ) -> Iterator[tuple[tuple[float, float], list[RawChar]]]:
     """The writing direction and characters of each text line, in reading order."""
+    flags = _flags(include_clipped or everywhere)
     if everywhere:
-        flags, clip = TEXT_FLAGS & ~pymupdf.TEXT_MEDIABOX_CLIP, pymupdf.INFINITE_RECT()
+        flags, clip = flags & ~pymupdf.TEXT_MEDIABOX_CLIP, pymupdf.INFINITE_RECT()
     else:
-        flags, clip = TEXT_FLAGS, None
+        clip = None
     raw = page.get_text("rawdict", flags=flags, clip=clip)
     for block in raw["blocks"]:
         if block.get("type") != 0:
@@ -117,10 +125,14 @@ def raw_lines(
                 yield direction, chars
 
 
-def extract_lines(page: pymupdf.Page, everywhere: bool = False) -> list[list[Char]]:
+def extract_lines(
+    page: pymupdf.Page, everywhere: bool = False, include_clipped: bool = False
+) -> list[list[Char]]:
     """All text lines on the page in reading order, each as a list of characters.
 
-    Only text inside the page area is included unless `everywhere` is set.
+    Only text inside the page area is included unless `everywhere` is set, and only text that a
+    clip path does not hide entirely unless `include_clipped` (or `everywhere`) is set. Text in
+    layers that are switched off is never included: see ``all_text_lines``.
     """
     Rect, Point = pymupdf.Rect, pymupdf.Point
     return [
@@ -128,13 +140,31 @@ def extract_lines(page: pymupdf.Page, everywhere: bool = False) -> list[list[Cha
             Char(c, Rect(bbox), Rect(box), Point(origin), size, n, direction, invisible)
             for c, bbox, box, origin, size, invisible in chars
         ]
-        for n, (direction, chars) in enumerate(raw_lines(page, everywhere))
+        for n, (direction, chars) in enumerate(raw_lines(page, everywhere, include_clipped))
     ]
 
 
-def line_texts(page: pymupdf.Page) -> list[str]:
+def all_text_lines(page: pymupdf.Page) -> list[list[Char]]:
+    """Every text line in the page area, including text hidden by clip paths or in layers that
+    are switched off. Removal and verification must see these too."""
+    doc = page.parent
+    if not has_layers(doc):
+        return extract_lines(page, include_clipped=True)
+    with pymupdf.open() as copy:
+        copy.insert_pdf(
+            doc,
+            from_page=page.number,
+            to_page=page.number,
+            annots=False,
+            widgets=False,
+            links=False,
+        )
+        return extract_lines(copy[0], include_clipped=True)
+
+
+def line_texts(page: pymupdf.Page, include_clipped: bool = False) -> list[str]:
     """The text of each line, like ``extract_lines`` but much faster as it skips geometry."""
-    return page.get_text("text", flags=TEXT_FLAGS).split("\n")
+    return page.get_text("text", flags=_flags(include_clipped)).split("\n")
 
 
 def page_text_payload(page: pymupdf.Page) -> dict:

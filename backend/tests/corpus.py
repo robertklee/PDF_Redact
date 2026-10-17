@@ -238,6 +238,27 @@ def hidden_text() -> bytes:
     return doc.tobytes()
 
 
+CLIPPED_VISIBLE = "Name: Jane Doe, SSN"
+CLIPPED_SECRET = "123-45-6789"
+
+
+def clipped_text() -> bytes:
+    """A line whose end a clip path hides, like an overflowing table cell: the secret is in the
+    page content but never drawn."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    _three_lines(page)
+    xref = page.get_contents()[-1]
+    y = page.rect.height - 300
+    width = pymupdf.get_text_length(CLIPPED_VISIBLE, "helv", 12) + 2
+    cell = (
+        f"\nq 72 {y - 4:g} {width:g} 16 re W n BT /helv 12 Tf 72 {y:g} Td "
+        f"({CLIPPED_VISIBLE} {CLIPPED_SECRET} overflow) Tj ET Q\n"
+    )
+    doc.update_stream(xref, doc.xref_stream(xref) + cell.encode())
+    return doc.tobytes()
+
+
 LAYER_SECRET = "LAYER-SECRET-0042"
 
 
@@ -426,6 +447,7 @@ FIXTURES: dict[str, Callable[[], bytes]] = {
     "javascript": javascript,
     "metadata": metadata,
     "hidden_text": hidden_text,
+    "clipped_text": clipped_text,
     "actual_text": actual_text,
     "incremental_update": incremental_update,
     "encrypted": encrypted,
