@@ -84,6 +84,41 @@ def cropbox_offset() -> bytes:
     return doc.tobytes()
 
 
+def off_page_text() -> bytes:
+    """Text drawn outside the MediaBox: no viewer shows it, but it is in the content stream."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    _three_lines(page)
+    page.insert_text((72, -300), f"Above the page {SECRET}", fontsize=12)
+    page.insert_text((700, 400), f"Right of the page {SECRET}", fontsize=12)
+    return doc.tobytes()
+
+
+def field_with_kids() -> bytes:
+    """One form field (holding the value) shown by two widgets that are its kids."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "SSN:", fontsize=12)
+    page.insert_text((72, 300), "SSN again:", fontsize=12)
+    field = doc.get_new_xref()
+    kids = []
+    for y in (742, 542):
+        xref = doc.get_new_xref()
+        doc.update_object(
+            xref,
+            f"<</Type/Annot/Subtype/Widget/Rect[150 {y - 6} 340 {y + 12}]/F 4"
+            f"/Parent {field} 0 R/P {page.xref} 0 R>>",
+        )
+        kids.append(xref)
+    kid_refs = " ".join(f"{k} 0 R" for k in kids)
+    doc.update_object(field, f"<</FT/Tx/T(ssn)/V({SECRET})/DA(0 g /Helv 12 Tf)/Kids[{kid_refs}]>>")
+    doc.xref_set_key(page.xref, "Annots", f"[{kid_refs}]")
+    doc.xref_set_key(
+        doc.pdf_catalog(), "AcroForm", f"<</Fields[{field} 0 R]/NeedAppearances true>>"
+    )
+    return doc.tobytes()
+
+
 def image_with_ocr_text() -> bytes:
     """Like an OCR'd scan: a picture of the page with invisible text on top."""
     doc = pymupdf.open()
@@ -306,12 +341,14 @@ FIXTURES: dict[str, Callable[[], bytes]] = {
     "rotated_270": lambda: rotated(270),
     "vertical_text": vertical_text,
     "cropbox_offset": cropbox_offset,
+    "off_page_text": off_page_text,
     "image_with_ocr_text": image_with_ocr_text,
     "scanned_image": scanned_image,
     "vector_graphics": vector_graphics,
     "annotations": annotations,
     "existing_redaction": existing_redaction,
     "form_fields": form_fields,
+    "field_with_kids": field_with_kids,
     "attachments": attachments,
     "javascript": javascript,
     "metadata": metadata,

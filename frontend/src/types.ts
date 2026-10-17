@@ -113,6 +113,8 @@ export interface OutputInfo {
     overlaysSkipped: string[];
     /** Streams and property lists on redacted pages that had replacement text removed. */
     replacementTextRemoved: number;
+    /** Annotations, form fields and links that overlapped a mark and were deleted. */
+    annotationsRemoved: number;
   };
   verification: {
     passed: boolean;

@@ -11,7 +11,15 @@ from typing import Literal
 
 import pymupdf
 
-from .geometry import contains_point, inset, overlaps, segment_intersects_rect, touches
+from .geometry import (
+    contains_point,
+    inset,
+    overlaps,
+    page_area,
+    segment_intersects_rect,
+    to_unrotated,
+    touches,
+)
 from .objects import page_has_text_properties
 from .overlay import drawable
 from .redact import Mark, RedactOptions, mark_regions, open_pdf
@@ -122,7 +130,13 @@ class _PageVerifier:
         )
         self.images = page.get_image_info(xrefs=True)
         self.drawings = page.get_drawings()
-        self.annots = [a for a in page.annots() if a.type[0] != pymupdf.PDF_ANNOT_REDACT]
+        self.annots = [
+            a.rect
+            for a in page.annots()
+            if a.type[0] not in (pymupdf.PDF_ANNOT_REDACT, pymupdf.PDF_ANNOT_POPUP)
+        ]
+        self.widgets = [w.rect for w in page.widgets()]
+        self.links = [to_unrotated(page, link["from"]) for link in page.get_links()]
         self.own_boxes = [
             r for m in marks if m.appearance.fill is not None for r in mark_regions(page, m)
         ]
@@ -135,6 +149,8 @@ class _PageVerifier:
             problems += self._images(region)
             problems += self._vectors(region)
             problems += self._annotations(region)
+        if mark.kind == "page":
+            problems += self._off_page_text()
         if not problems:
             return Check("mark", "pass", "Content removed", self.page.number, mark.id)
         status = max((s for s, _ in problems), key=_SEVERITY.__getitem__)
@@ -200,11 +216,29 @@ class _PageVerifier:
             return [("warn", f"{kept} vector path(s) pass under the mark and were kept")]
         return []
 
-    def _annotations(self, region: pymupdf.Rect) -> list[tuple[Status, str]]:
-        hits = sum(overlaps(a.rect, region) for a in self.annots)
-        if hits:
-            return [("warn", f"{hits} annotation(s) overlap the mark")]
+    def _off_page_text(self) -> list[tuple[Status, str]]:
+        area = page_area(self.page)
+        outside = "".join(
+            ch[0] if isinstance(ch[0], str) else chr(ch[0])
+            for span in self.page.get_texttrace()
+            for ch in span["chars"]
+            if not touches(pymupdf.Rect(ch[3]), area)
+        )
+        if _squash(outside):
+            return [("fail", f"{len(_squash(outside))} text character(s) remain off the page")]
         return []
+
+    def _annotations(self, region: pymupdf.Rect) -> list[tuple[Status, str]]:
+        problems: list[tuple[Status, str]] = []
+        for rects, what in (
+            (self.annots, "annotation"),
+            (self.widgets, "form field"),
+            (self.links, "link"),
+        ):
+            hits = sum(overlaps(r, region) for r in rects)
+            if hits:
+                problems.append(("fail", f"{hits} {what}(s) overlap the mark"))
+        return problems
 
 
 def residual_checks(

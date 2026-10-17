@@ -138,6 +138,7 @@ class StatsOut(ApiModel):
     safety_pass_glyphs: int
     overlays_skipped: list[str]
     replacement_text_removed: int
+    annotations_removed: int
 
 
 class OutputOut(ApiModel):

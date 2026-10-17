@@ -392,3 +392,74 @@ def test_leftover_replacement_text_fails_verification() -> None:
     check = next(c for c in verification.checks if c.name == "replacement-text")
     assert check.status == "fail"
     assert not verification.passed
+
+
+def test_form_field_under_a_mark_is_removed_with_its_value() -> None:
+    data = corpus.form_fields()
+    out, stats, verification = _redact_and_verify(data, [area_mark((100, 80, 320, 110))])
+    assert stats.annotations_removed == 1
+    assert verification.passed, verification.checks
+    assert not leaks(out, SECRET)
+    with pymupdf.open(stream=out, filetype="pdf") as doc:
+        assert not list(doc[0].widgets())
+        assert "SSN:" in doc[0].get_text()
+
+
+def test_field_value_is_cleared_only_when_every_widget_is_redacted() -> None:
+    data = corpus.field_with_kids()
+    out, stats, _ = _redact_and_verify(data, [area_mark((140, 80, 350, 110))])
+    assert stats.annotations_removed == 1
+    assert leaks(out, SECRET)  # the other widget still shows the value
+    marks = [area_mark((140, 80, 350, 110)), area_mark((140, 280, 350, 310), mark_id="a2")]
+    out, stats, verification = _redact_and_verify(data, marks)
+    assert stats.annotations_removed == 2
+    assert verification.passed, verification.checks
+    assert not leaks(out, SECRET)
+
+
+def test_annotations_and_links_under_a_mark_are_removed() -> None:
+    doc = pymupdf.open(stream=corpus.annotations(), filetype="pdf")
+    page = doc[0]
+    hit = page.search_for(SECRET)[0]
+    page.insert_link({"kind": pymupdf.LINK_URI, "from": hit, "uri": f"mailto:{SECRET}@x.org"})
+    page.insert_link(
+        {
+            "kind": pymupdf.LINK_URI,
+            "from": pymupdf.Rect(72, 400, 200, 420),
+            "uri": "https://example.org",
+        }
+    )
+    data = doc.tobytes()
+    # The sticky note's icon sits on the secret; the free-text comment is elsewhere.
+    out, stats, verification = _redact_and_verify(data, [area_mark(tuple(hit + (-2, -20, 2, 2)))])
+    assert stats.annotations_removed >= 1  # MuPDF itself drops covered links
+    assert verification.passed, verification.checks
+    with pymupdf.open(stream=out, filetype="pdf") as doc:
+        assert [a.type[1] for a in doc[0].annots()] == ["FreeText"]
+        assert [link["uri"] for link in doc[0].get_links()] == ["https://example.org"]
+    assert not leaks(out, f"Note about {SECRET}")
+    assert not leaks(out, f"mailto:{SECRET}")
+
+
+def test_annotation_left_under_a_mark_fails_verification() -> None:
+    data = corpus.annotations()
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        hit = doc[0].search_for(SECRET)[0]
+    verification = verify_bytes(data, [area_mark(tuple(hit + (-2, -20, 2, 2)))])
+    check = _mark_check(verification)
+    assert check.status == "fail"
+    assert "annotation" in check.message
+
+
+def test_page_mark_removes_text_outside_the_media_box() -> None:
+    data = corpus.off_page_text()
+    assert leaks(data, f"Above the page {SECRET}")
+    page = Mark("p1", 0, "page", [])
+    out, _, verification = _redact_and_verify(data, [page])
+    assert verification.passed, verification.checks
+    assert not leaks(out, SECRET)
+    assert not leaks(out, "Visible line")
+    # The untouched original fails the page mark's off-page check.
+    check = _mark_check(verify_bytes(data, [page]))
+    assert check.status == "fail"
+    assert "off the page" in check.message

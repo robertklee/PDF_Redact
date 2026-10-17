@@ -25,7 +25,7 @@ from typing import Literal
 
 import pymupdf
 
-from .geometry import contains_point, page_area, to_unrotated, union
+from .geometry import contains_point, overlaps, page_area, to_unrotated
 from .objects import strip_page_text_properties
 from .overlay import DIRECTIONS, Appearance, drawable, layout_overlay
 from .text import Char, extract_lines
@@ -47,6 +47,8 @@ GRAPHICS_MODES: dict[str, int] = {
 
 # Tolerance (points) when deciding whether a glyph centre lies inside a text mark.
 SELECT_TOLERANCE = 0.5
+# How far past the page edges page marks reach to remove content placed off the page.
+OFF_PAGE = 100_000
 # Removal band through each glyph, as fractions of the font size above the baseline.
 BAND_LOW, BAND_HIGH = 0.30, 0.45
 
@@ -80,6 +82,8 @@ class RedactStats:
     overlays_skipped: list[str] = field(default_factory=list)
     # Content streams and property lists whose replacement text (/ActualText etc.) was removed.
     replacement_text_removed: int = 0
+    # Annotations, form fields and links that overlapped a mark and were deleted.
+    annotations_removed: int = 0
 
 
 def mark_regions(page: pymupdf.Page, mark: Mark) -> list[pymupdf.Rect]:
@@ -128,10 +132,8 @@ def removal_bands(chars: Iterable[Char]) -> list[pymupdf.Rect]:
 
 
 def _full_extent(page: pymupdf.Page) -> pymupdf.Rect:
-    """Visible area plus anything in the MediaBox outside the CropBox, in unrotated space."""
-    mb, cb = page.mediabox, page.cropbox
-    media = pymupdf.Rect(mb.x0 - cb.x0, mb.y0 - cb.y0, mb.x1 - cb.x0, mb.y1 - cb.y0)
-    return union([page_area(page), media])
+    """Everything the page could draw, including content placed outside the MediaBox."""
+    return pymupdf.Rect(page_area(page)) + (-OFF_PAGE, -OFF_PAGE, OFF_PAGE, OFF_PAGE)
 
 
 def _add_box(page: pymupdf.Page, region: pymupdf.Rect, appearance: Appearance) -> None:
@@ -195,6 +197,57 @@ def _remove_glyphs(page: pymupdf.Page, rects: list[pymupdf.Rect]) -> None:
         graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
         text=pymupdf.PDF_REDACT_TEXT_REMOVE,
     )
+
+
+def _field_parent(doc: pymupdf.Document, xref: int) -> int | None:
+    """The field a widget belongs to, if the widget is a kid of a separate field dictionary."""
+    if doc.xref_get_key(xref, "T")[0] != "null":
+        return None
+    kind, value = doc.xref_get_key(xref, "Parent")
+    return int(value.split()[0]) if kind == "xref" else None
+
+
+def _field_kids(doc: pymupdf.Document, xref: int) -> set[int]:
+    kind, value = doc.xref_get_key(xref, "Kids")
+    if kind != "array":
+        return set()
+    parts = value.strip("[]").split()
+    return {int(parts[i]) for i in range(0, len(parts) - 2, 3) if parts[i + 2] == "R"}
+
+
+def _remove_covered_annotations(page: pymupdf.Page, regions: list[pymupdf.Rect]) -> int:
+    """Delete annotations, form fields and links that overlap a redacted region: their comments,
+    values and targets are part of what is being redacted."""
+    doc = page.parent
+
+    def covered(rect: pymupdf.Rect) -> bool:
+        return any(overlaps(rect, region) for region in regions)
+
+    annots = [
+        a.xref
+        for a in page.annots()
+        if a.type[0] not in (pymupdf.PDF_ANNOT_REDACT, pymupdf.PDF_ANNOT_POPUP) and covered(a.rect)
+    ]
+    for xref in annots:
+        page.delete_annot(page.load_annot(xref))
+
+    widgets = [w.xref for w in page.widgets() if covered(w.rect)]
+    parents: dict[int, set[int]] = defaultdict(set)
+    for xref in widgets:
+        parent = _field_parent(doc, xref)
+        if parent is not None:
+            parents[parent].add(xref)
+        page.delete_widget(page.load_widget(xref))
+    for parent, deleted in parents.items():
+        # A field whose every widget was redacted must not keep its value.
+        if _field_kids(doc, parent) <= deleted:
+            for key in ("V", "DV"):
+                doc.xref_set_key(parent, key, "null")
+
+    links = [link for link in page.get_links() if covered(to_unrotated(page, link["from"]))]
+    for link in links:
+        page.delete_link(link)
+    return len(annots) + len(widgets) + len(links)
 
 
 def _delete_existing_redact_annots(page: pymupdf.Page) -> None:
@@ -274,6 +327,8 @@ def apply_marks(
     for pno in sorted(by_page):
         page = doc[pno]
         redact_page(page, by_page[pno], options, stats)
+        regions = [r for m in by_page[pno] for r in mark_regions(page, m)]
+        stats.annotations_removed += _remove_covered_annotations(page, regions)
         stats.replacement_text_removed += strip_page_text_properties(doc, page)
     stats.pages = sorted(by_page)
     return stats

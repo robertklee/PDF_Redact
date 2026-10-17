@@ -218,6 +218,12 @@ function Result(props: ResultProps) {
         {stats.safetyPassGlyphs > 0 && (
           <li>{plural(stats.safetyPassGlyphs, "extra character")} removed by the safety pass</li>
         )}
+        {stats.annotationsRemoved > 0 && (
+          <li>
+            {plural(stats.annotationsRemoved, "comment, form field or link", "comments, form fields or links")}{" "}
+            under marks removed
+          </li>
+        )}
         {stats.replacementTextRemoved > 0 && (
           <li>Hidden replacement text (ActualText) removed from redacted pages</li>
         )}
