@@ -29,6 +29,7 @@ class Char:
     size: float  # font size
     line: int  # index of the containing line, in reading order
     dir: tuple[float, float]  # unit writing direction of the line
+    invisible: bool = False  # neither filled nor stroked, fully transparent, or an OCR font
 
     @property
     def center(self) -> pymupdf.Point:
@@ -58,9 +59,26 @@ def tight_box(
     return pymupdf.Rect(min(xs), min(ys), max(xs), max(ys))
 
 
-def extract_lines(page: pymupdf.Page) -> list[list[Char]]:
-    """All text lines on the page in reading order, each as a list of characters."""
-    raw = page.get_text("rawdict", flags=TEXT_FLAGS)
+_PAINTED = pymupdf.mupdf.FZ_STEXT_FILLED | pymupdf.mupdf.FZ_STEXT_STROKED
+
+
+def _invisible(span: dict) -> bool:
+    if span.get("alpha") == 0 or str(span.get("font", "")).endswith("GlyphLessFont"):
+        return True
+    flags = span.get("char_flags")
+    return isinstance(flags, int) and not flags & _PAINTED
+
+
+def extract_lines(page: pymupdf.Page, everywhere: bool = False) -> list[list[Char]]:
+    """All text lines on the page in reading order, each as a list of characters.
+
+    Only text inside the page area is included unless `everywhere` is set.
+    """
+    if everywhere:
+        flags, clip = TEXT_FLAGS & ~pymupdf.TEXT_MEDIABOX_CLIP, pymupdf.INFINITE_RECT()
+    else:
+        flags, clip = TEXT_FLAGS, None
+    raw = page.get_text("rawdict", flags=flags, clip=clip)
     lines: list[list[Char]] = []
     for block in raw["blocks"]:
         if block.get("type") != 0:
@@ -70,6 +88,7 @@ def extract_lines(page: pymupdf.Page) -> list[list[Char]]:
             chars = []
             for span in line["spans"]:
                 size = float(span["size"])
+                invisible = _invisible(span)
                 for ch in span["chars"]:
                     bbox, origin = pymupdf.Rect(ch["bbox"]), pymupdf.Point(ch["origin"])
                     chars.append(
@@ -81,6 +100,7 @@ def extract_lines(page: pymupdf.Page) -> list[list[Char]]:
                             size=size,
                             line=len(lines),
                             dir=direction,
+                            invisible=invisible,
                         )
                     )
             if chars:

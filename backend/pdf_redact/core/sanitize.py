@@ -14,7 +14,11 @@ from typing import Literal
 
 import pymupdf
 
+from .geometry import contains_point, full_extent, outside, page_area
+from .hidden import hidden_text
 from .objects import Node, child, delete_key, get
+from .removal import apply_regions, removal_bands, remove_glyphs
+from .text import extract_lines
 
 AnnotationMode = Literal["remove", "flatten", "keep"]
 FormMode = Literal["flatten", "reset", "keep"]
@@ -47,6 +51,9 @@ class SanitizeOptions:
     thumbnails: bool = True
     bookmarks: bool = False
     page_labels: bool = False
+    outside_crop: bool = True  # content outside the visible page area
+    hidden_text: bool = True  # invisible, background-coloured or covered text
+    keep_ocr_text: bool = True  # but keep the invisible text layer over scanned images
 
 
 @dataclass
@@ -262,6 +269,75 @@ def remove_page_labels(doc: pymupdf.Document) -> int:
     return int(_drop_key(doc, doc.pdf_catalog(), "PageLabels"))
 
 
+# --- page content ---------------------------------------------------------------------------------
+
+_TEXT_KINDS = frozenset({"fill-text", "stroke-text", "ignore-text"})
+_OTHER_KINDS = frozenset({"fill-path", "stroke-path", "fill-shade", "fill-image", "fill-imgmask"})
+# Content reaching this far past an edge (in points) counts as outside; less is rounding.
+_EDGE = 1.0
+
+
+def _visible(page: pymupdf.Page) -> pymupdf.Rect:
+    """The page area, widened by a rounding margin."""
+    return page_area(page) + (-_EDGE, -_EDGE, _EDGE, _EDGE)
+
+
+def _reaches_outside(page: pymupdf.Page) -> tuple[bool, bool]:
+    """Whether any text, and any other content, extends past the visible area."""
+    visible = _visible(page)
+    text = other = False
+    for kind, bbox in page.get_bboxlog():
+        if pymupdf.Rect(bbox) not in visible:
+            text = text or kind in _TEXT_KINDS
+            other = other or kind in _OTHER_KINDS
+    return text, other
+
+
+def _center(bbox: tuple[float, float, float, float]) -> pymupdf.Point:
+    return pymupdf.Point((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
+
+
+def _chars_outside(page: pymupdf.Page, area: pymupdf.Rect) -> list:
+    return [
+        ch
+        for line in extract_lines(page, everywhere=True)
+        for ch in line
+        if not ch.c.isspace() and not contains_point(area, ch.center)
+    ]
+
+
+def remove_outside_crop(doc: pymupdf.Document) -> int:
+    """Remove what lies outside each page's visible area; returns the number of pages changed."""
+    changed = 0
+    for page in doc:
+        text, other = _reaches_outside(page)
+        if not (text or other):
+            continue
+        area = page_area(page)
+        bands = removal_bands(_chars_outside(page, area)) if text else []
+        remove_glyphs(page, bands)
+        if other:
+            # Images are cut to the visible area and graphics wholly outside it are removed.
+            apply_regions(
+                page,
+                [(strip, None) for strip in outside(_visible(page), full_extent(page))],
+                pymupdf.PDF_REDACT_IMAGE_PIXELS,
+                pymupdf.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED,
+                pymupdf.PDF_REDACT_TEXT_NONE,
+            )
+        changed += bool(bands or other)
+    return changed
+
+
+def remove_hidden_text(doc: pymupdf.Document, keep_ocr: bool) -> int:
+    """Remove text that cannot be seen; returns the number of characters removed."""
+    removed = 0
+    for number, chars in hidden_text(doc, keep_ocr).items():
+        remove_glyphs(doc[number], removal_bands(chars))
+        removed += len(chars)
+    return removed
+
+
 # --- orchestration --------------------------------------------------------------------------------
 
 
@@ -283,6 +359,22 @@ def sanitize_document(doc: pymupdf.Document, options: SanitizeOptions) -> list[S
     elif options.annotations == "flatten":
         steps.append(
             ("annotations", flatten_annotations, lambda n: f"Flattened {_plural(n, 'comment')}")
+        )
+    if options.outside_crop:
+        steps.append(
+            (
+                "outside-crop",
+                remove_outside_crop,
+                lambda n: f"Removed content outside the visible area on {_plural(n, 'page')}",
+            )
+        )
+    if options.hidden_text:
+        steps.append(
+            (
+                "hidden-text",
+                lambda d: remove_hidden_text(d, options.keep_ocr_text),
+                lambda n: f"Removed {_plural(n, 'hidden character')}",
+            )
         )
     if options.links:
         steps.append(("links", remove_links, lambda n: f"Removed {_plural(n, 'link')}"))
@@ -362,6 +454,34 @@ def sanitize_findings(doc: pymupdf.Document, options: SanitizeOptions) -> list[F
         count = sum(1 for page in doc for _ in page.annots())
         problems = [f"{_plural(count, 'comment')} remain"] if count else []
         findings.append(_finding("annotations", problems, "No comments left"))
+    if options.outside_crop:
+        chars = other = 0
+        for page in doc:
+            area, visible = page_area(page), _visible(page)
+            chars += sum(
+                1
+                for ch in page.get_texttrace()
+                for c in ch["chars"]
+                if not chr(c[0]).isspace() and not contains_point(area, _center(c[3]))
+            )
+            other += sum(
+                1
+                for kind, bbox in page.get_bboxlog()
+                if kind in _OTHER_KINDS and not pymupdf.Rect(bbox).intersects(visible)
+            )
+        problems = []
+        if chars:
+            problems.append(f"{_plural(chars, 'character')} outside the visible area remain")
+        if other:
+            problems.append(
+                f"{_plural(other, 'image or graphic', 'images or graphics')} outside the "
+                "visible area remain"
+            )
+        findings.append(_finding("outside-crop", problems, "Nothing left outside the visible area"))
+    if options.hidden_text:
+        count = sum(len(chars) for chars in hidden_text(doc, options.keep_ocr_text).values())
+        problems = [f"{_plural(count, 'hidden character')} remain"] if count else []
+        findings.append(_finding("hidden-text", problems, "No hidden text left"))
     if options.links:
         count = sum(len(page.get_links()) for page in doc)
         problems = [f"{_plural(count, 'link')} remain"] if count else []

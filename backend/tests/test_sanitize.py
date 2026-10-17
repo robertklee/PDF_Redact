@@ -7,8 +7,18 @@ from pdf_redact.core.redact import RedactOptions, redact_bytes
 from pdf_redact.core.sanitize import SanitizeOptions
 from pdf_redact.core.verify import verify_bytes
 from tests import corpus
-from tests.corpus import ABOVE, SECRET
+from tests.corpus import ABOVE, BELOW, SECRET, SECRET_LINE
 from tests.helpers import area_mark, display_hits, leaks, mupdf_text, text_mark
+
+ONLY_PAGE_CONTENT = SanitizeOptions(
+    metadata=False,
+    annotations="keep",
+    forms="keep",
+    attachments=False,
+    links=False,
+    javascript=False,
+    thumbnails=False,
+)
 
 EVERYTHING = SanitizeOptions(bookmarks=True, page_labels=True)
 NOTHING = SanitizeOptions(
@@ -19,6 +29,8 @@ NOTHING = SanitizeOptions(
     links=False,
     javascript=False,
     thumbnails=False,
+    outside_crop=False,
+    hidden_text=False,
 )
 
 
@@ -52,7 +64,18 @@ def _doc(data: bytes) -> pymupdf.Document:
 
 
 @pytest.mark.parametrize(
-    "name", ["metadata", "attachments", "javascript", "annotations", "actual_text", "kitchen_sink"]
+    "name",
+    [
+        "metadata",
+        "attachments",
+        "javascript",
+        "annotations",
+        "actual_text",
+        "hidden_text",
+        "outside_crop",
+        "off_page_text",
+        "kitchen_sink",
+    ],
 )
 def test_redacting_and_sanitizing_leaves_no_trace_of_the_secret(name: str) -> None:
     data = corpus.FIXTURES[name]()
@@ -259,3 +282,73 @@ def test_bookmarks_page_labels_and_thumbnails() -> None:
     assert verification.passed
     assert not leaks(out, f"Chapter {SECRET}")
     assert not leaks(out, f"{SECRET}-")
+
+
+def _looks_the_same(a: bytes, b: bytes) -> bool:
+    """Whether two files render alike, up to anti-aliasing changes from rewritten content."""
+    with _doc(a) as first, _doc(b) as second:
+        for pa, pb in zip(first, second, strict=True):
+            sa, sb = pa.get_pixmap(dpi=96).samples, pb.get_pixmap(dpi=96).samples
+            if len(sa) != len(sb) or any(abs(x - y) > 32 for x, y in zip(sa, sb, strict=True)):
+                return False
+    return True
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 270])
+def test_hidden_text_is_removed_and_visible_text_kept(rotation: int) -> None:
+    with _doc(corpus.hidden_text()) as doc:
+        doc[0].set_rotation(rotation)
+        data = doc.tobytes()
+    out, stats, verification = _sanitize(data, ONLY_PAGE_CONTENT)
+    assert _action(stats, "hidden-text").count == 3 * len(SECRET) + len("InvisibleWhiteCovered")
+    assert _check(verification, "hidden-text").status == "pass"
+    text = mupdf_text(out)
+    assert "Invisible" not in text and "White" not in text and "Covered" not in text
+    assert SECRET_LINE in text and ABOVE in text and BELOW in text
+    assert _looks_the_same(out, data)
+
+
+def test_original_with_hidden_text_fails_the_check() -> None:
+    verification = verify_bytes(corpus.hidden_text(), [], RedactOptions(sanitize=ONLY_PAGE_CONTENT))
+    check = _check(verification, "hidden-text")
+    assert check.status == "fail"
+    assert "hidden character" in check.message
+
+
+def test_ocr_text_layer_is_kept_unless_asked() -> None:
+    data = corpus.image_with_ocr_text()
+    out, stats, verification = _sanitize(data, ONLY_PAGE_CONTENT)
+    assert _action(stats, "hidden-text").count == 0
+    assert SECRET in mupdf_text(out)
+    assert verification.passed
+
+    strict = SanitizeOptions(**{**ONLY_PAGE_CONTENT.__dict__, "keep_ocr_text": False})
+    out, stats, verification = _sanitize(data, strict)
+    assert _action(stats, "hidden-text").count > 0
+    assert not mupdf_text(out).strip()
+    assert verification.passed
+
+
+def test_content_outside_the_crop_box_is_removed() -> None:
+    data = corpus.outside_crop()
+    original = verify_bytes(data, [], RedactOptions(sanitize=ONLY_PAGE_CONTENT))
+    assert _check(original, "outside-crop").status == "fail"
+
+    out, stats, verification = _sanitize(data, ONLY_PAGE_CONTENT)
+    assert _action(stats, "outside-crop").count == 1
+    assert _check(verification, "outside-crop").status == "pass"
+    assert not leaks(out, "Outside crop") and not leaks(out, "Off the page")
+    assert SECRET_LINE in mupdf_text(out)
+    with _doc(out) as doc:
+        page = doc[0]
+        assert len(page.get_image_info()) == 1  # the image wholly outside is gone
+        assert len(page.get_drawings()) == 1  # only the visible rectangle is left
+    assert _looks_the_same(out, data)
+
+
+def test_visible_pages_are_not_touched_by_page_content_options() -> None:
+    for name in ("text_basic", "rotated_90", "vertical_text", "image_with_ocr_text"):
+        data = corpus.FIXTURES[name]()
+        _, stats, _ = _sanitize(data, ONLY_PAGE_CONTENT)
+        assert _action(stats, "outside-crop").count == 0, name
+        assert _action(stats, "hidden-text").count == 0, name

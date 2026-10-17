@@ -84,6 +84,24 @@ def cropbox_offset() -> bytes:
     return doc.tobytes()
 
 
+def outside_crop() -> bytes:
+    """Text, images and graphics placed where the CropBox hides them, on a rotated page."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    _three_lines(page, x=150, y=250)
+    page.insert_text((20, 30), f"Outside crop {SECRET}", fontsize=10)
+    page.insert_text((700, 400), f"Off the page {SECRET}", fontsize=10)
+    pix = _pattern_pixmap()
+    page.insert_image(pymupdf.Rect(10, 400, 90, 480), pixmap=pix, keep_proportion=False)
+    page.insert_image(pymupdf.Rect(400, 300, 560, 380), pixmap=pix, keep_proportion=False)
+    page.draw_rect(pymupdf.Rect(20, 650, 80, 700), color=(1, 0, 0), fill=(0, 1, 0))
+    page.draw_rect(pymupdf.Rect(20, 100, 80, 200), color=(1, 0, 0), fill=(0, 1, 0))
+    page.draw_rect(pymupdf.Rect(300, 500, 350, 520), color=(1, 0, 0), fill=(0, 1, 0))  # visible
+    page.set_cropbox(pymupdf.Rect(100, 150, 500, 600))
+    page.set_rotation(90)
+    return doc.tobytes()
+
+
 def off_page_text() -> bytes:
     """Text drawn outside the MediaBox: no viewer shows it, but it is in the content stream."""
     doc = pymupdf.open()
@@ -123,7 +141,9 @@ def image_with_ocr_text() -> bytes:
     """Like an OCR'd scan: a picture of the page with invisible text on top."""
     doc = pymupdf.open()
     page = doc.new_page()
-    page.insert_image(pymupdf.Rect(60, 100, 420, 160), pixmap=_pattern_pixmap())
+    page.insert_image(
+        pymupdf.Rect(60, 100, 420, 160), pixmap=_pattern_pixmap(), keep_proportion=False
+    )
     _three_lines(page, render_mode=3)
     return doc.tobytes()
 
@@ -213,6 +233,8 @@ def hidden_text() -> bytes:
     _three_lines(page)
     page.insert_text((72, 300), f"Invisible {SECRET}", fontsize=12, render_mode=3)
     page.insert_text((72, 330), f"White {SECRET}", fontsize=12, color=(1, 1, 1))
+    page.insert_text((72, 360), f"Covered {SECRET}", fontsize=12)
+    page.draw_rect(pymupdf.Rect(60, 345, 300, 366), color=None, fill=(0.2, 0.4, 0.6))
     return doc.tobytes()
 
 
@@ -342,6 +364,7 @@ FIXTURES: dict[str, Callable[[], bytes]] = {
     "vertical_text": vertical_text,
     "cropbox_offset": cropbox_offset,
     "off_page_text": off_page_text,
+    "outside_crop": outside_crop,
     "image_with_ocr_text": image_with_ocr_text,
     "scanned_image": scanned_image,
     "vector_graphics": vector_graphics,
