@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
+from .core.annots import ImportedMark
 from .core.redact import Appearance, Mark, RedactOptions
 from .core.report import MarkInfo
 from .core.sanitize import SanitizeOptions
@@ -61,7 +62,7 @@ class MarkIn(ApiModel):
     rects: list[Rect] = Field(default_factory=list, max_length=10_000)
     appearance: AppearanceIn = Field(default_factory=AppearanceIn)
     # For the audit log only.
-    source: Literal["manual", "search", "detect"] = "manual"
+    source: Literal["manual", "search", "detect", "import"] = "manual"
     category: str | None = Field(default=None, max_length=100)
     created_at: str | None = Field(default=None, max_length=40)
 
@@ -77,6 +78,62 @@ class MarkIn(ApiModel):
 
     def info(self) -> MarkInfo:
         return MarkInfo(self.source, self.category, self.created_at)
+
+
+def _rgb_to_hex(rgb: tuple[float, float, float]) -> str:
+    return "#" + "".join(f"{round(min(max(c, 0.0), 1.0) * 255):02x}" for c in rgb)
+
+
+class AppearanceOut(ApiModel):
+    fill: str | None
+    text_color: str
+    overlay_text: str
+    font_size: float | None
+    align: Literal["left", "center", "right"]
+    font: Literal["helv", "tiro", "cour"]
+    repeat: bool
+
+    @classmethod
+    def from_engine(cls, a: Appearance) -> AppearanceOut:
+        return cls(
+            fill=_rgb_to_hex(a.fill) if a.fill else None,
+            text_color=_rgb_to_hex(a.text_color),
+            overlay_text=a.overlay_text,
+            font_size=a.font_size,
+            align=a.align,
+            font=a.font,
+            repeat=a.repeat,
+        )
+
+
+class MarkOut(ApiModel):
+    """A mark found in the document as a /Redact annotation."""
+
+    id: str
+    page: int
+    kind: Literal["text", "area", "page"]
+    rects: list[tuple[float, float, float, float]]
+    appearance: AppearanceOut
+    text: str
+    angle: int | None
+    source: Literal["import"] = "import"
+
+    @classmethod
+    def from_engine(cls, item: ImportedMark) -> MarkOut:
+        m = item.mark
+        return cls(
+            id=m.id,
+            page=m.page,
+            kind=m.kind,
+            rects=[tuple(round(v, 2) for v in r) for r in m.rects],  # type: ignore[misc]
+            appearance=AppearanceOut.from_engine(m.appearance),
+            text=item.text,
+            angle=item.angle,
+        )
+
+
+class MarkedRequest(ApiModel):
+    marks: list[MarkIn] = Field(max_length=100_000)
 
 
 class SanitizeIn(ApiModel):
@@ -149,6 +206,8 @@ class DocumentOut(ApiModel):
     page_count: int
     pages: list[PageOut]
     notices: list[NoticeOut]
+    # Unapplied /Redact annotations in the file, to load as marks.
+    redactions: list[MarkOut]
 
 
 class CheckOut(ApiModel):

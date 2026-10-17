@@ -21,7 +21,14 @@ import pymupdf
 
 from .. import __version__
 from .geometry import to_display, union
-from .redact import Mark, RedactOptions, RedactStats, mark_regions, selected_chars
+from .redact import (
+    Mark,
+    RedactOptions,
+    RedactStats,
+    chars_text,
+    mark_regions,
+    selected_chars,
+)
 from .text import extract_lines
 from .verify import Verification
 
@@ -57,10 +64,7 @@ def marked_text(doc: pymupdf.Document, marks: list[Mark]) -> dict[str, str]:
         page = doc[pno]
         lines = extract_lines(page)
         for mark in page_marks:
-            regions = mark_regions(page, mark)
-            chosen = {id(ch) for ch in selected_chars(lines, regions)}
-            parts = ["".join(ch.c for ch in line if id(ch) in chosen) for line in lines]
-            texts[mark.id] = "\n".join(p for p in parts if p.strip())
+            texts[mark.id] = chars_text(lines, selected_chars(lines, mark_regions(page, mark)))
     return texts
 
 
@@ -315,7 +319,7 @@ _SANITIZE = {
     "bookmarks": "Bookmarks",
     "page-labels": "Page labels",
 }
-_SOURCES = {"manual": "Manual", "search": "Search", "detect": "Detected"}
+_SOURCES = {"manual": "Manual", "search": "Search", "detect": "Detected", "import": "Imported"}
 _IMAGES = {
     "pixels": "Covered pixels blanked",
     "remove": "Images touched by a mark removed",

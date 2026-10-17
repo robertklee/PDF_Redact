@@ -121,10 +121,9 @@ def document_notices(doc: pymupdf.Document) -> list[Notice]:
         notices.append(
             Notice(
                 "existing-redactions",
-                "warning",
-                f"The document has {count} unapplied redaction mark(s) from another tool. They "
-                "are not applied and are dropped from the redacted copy; mark those areas again "
-                "to redact them.",
+                "info",
+                f"The document has {count} unapplied redaction mark(s), for example from another "
+                "tool. They have been added to the marks list; review them before applying.",
             )
         )
     return notices

@@ -405,3 +405,60 @@ def test_reports(client) -> None:
     assert client.get(url, params={"text": "everything"}).status_code == 422
     assert client.get(url, params={"format": "pdf"}).status_code == 422
     assert client.get("/api/outputs/nope/report").status_code == 404
+
+
+def test_marked_copy_round_trip(client) -> None:
+    data = corpus.text_basic()
+    info = upload(client, data).json()
+    assert info["redactions"] == []
+    rects = display_hits(data, SECRET)
+    mark = {**_mark(rects, overlayText="(b)(6)"), "id": "mark-1"}
+    page_mark = {"id": "mark-2", "page": 0, "kind": "page"}
+    res = client.post(f"/api/documents/{info['id']}/marked", json={"marks": [mark, page_mark]})
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "application/pdf"
+    assert res.headers["content-disposition"] == (
+        "attachment; filename*=utf-8''case%20file_marked.pdf"
+    )
+    assert SECRET in mupdf_text(res.content), "nothing is removed from a marked copy"
+
+    reopened = upload(client, res.content, "case file_marked.pdf").json()
+    assert "existing-redactions" in [n["code"] for n in reopened["notices"]]
+    text, page = reopened["redactions"]
+    assert (text["id"], text["kind"], text["source"], text["text"]) == (
+        "mark-1",
+        "text",
+        "import",
+        SECRET,
+    )
+    assert all(abs(a - b) < 0.01 for a, b in zip(text["rects"][0], rects[0], strict=True))
+    assert text["appearance"] == {
+        "fill": "#000000",
+        "textColor": "#ffffff",
+        "overlayText": "(b)(6)",
+        "fontSize": None,
+        "align": "center",
+        "font": "helv",
+        "repeat": False,
+    }
+    assert (page["id"], page["kind"], page["rects"]) == ("mark-2", "page", [])
+
+    # Imported marks apply like any other, and the annotations do not survive.
+    applied = client.post(
+        f"/api/documents/{reopened['id']}/apply", json={"marks": [{**text, "angle": None}]}
+    )
+    assert applied.status_code == 200
+    out = client.get(f"/api/outputs/{applied.json()['id']}/file").content
+    assert SECRET not in mupdf_text(out)
+    assert ABOVE in mupdf_text(out)
+
+
+def test_marked_copy_errors(client) -> None:
+    doc_id = upload(client, corpus.text_basic()).json()["id"]
+    bad = {"marks": [{"id": "m", "page": 5, "kind": "page"}]}
+    assert client.post(f"/api/documents/{doc_id}/marked", json=bad).status_code == 422
+    locked = upload(client, corpus.encrypted()).json()
+    assert locked["redactions"] == []
+    res = client.post(f"/api/documents/{locked['id']}/marked", json={"marks": []})
+    assert res.status_code == 423
+    assert client.post("/api/documents/nope/marked", json={"marks": []}).status_code == 404

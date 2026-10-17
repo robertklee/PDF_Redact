@@ -103,6 +103,13 @@ def selected_chars(lines: Iterable[list[Char]], regions: list[pymupdf.Rect]) -> 
     ]
 
 
+def chars_text(lines: Iterable[list[Char]], chars: Iterable[Char]) -> str:
+    """The text of `chars`, one line of the page per line."""
+    chosen = {id(ch) for ch in chars}
+    parts = ["".join(ch.c for ch in line if id(ch) in chosen) for line in lines]
+    return "\n".join(p for p in parts if p.strip())
+
+
 def text_angle(page: pymupdf.Page, chars: Iterable[Char]) -> int | None:
     """Dominant display-space writing angle (0/90/180/270) of the glyphs, if axis-aligned."""
     votes: dict[int, int] = defaultdict(int)
@@ -203,7 +210,7 @@ def _remove_covered_annotations(page: pymupdf.Page, regions: list[pymupdf.Rect])
     return len(annots) + len(widgets) + len(links)
 
 
-def _delete_existing_redact_annots(page: pymupdf.Page) -> None:
+def delete_redact_annots(page: pymupdf.Page) -> None:
     """Pre-existing /Redact annotations would otherwise be applied implicitly."""
     for xref in [a.xref for a in page.annots(types=[pymupdf.PDF_ANNOT_REDACT])]:
         page.delete_annot(page.load_annot(xref))
@@ -281,7 +288,7 @@ def apply_marks(
         stats.sanitized = sanitize_document(doc, options.sanitize)
     for page in doc:
         # apply_redactions() would apply these too, and elsewhere they would be left unapplied.
-        _delete_existing_redact_annots(page)
+        delete_redact_annots(page)
     for pno in sorted(by_page):
         page = doc[pno]
         redact_page(page, by_page[pno], options, stats)

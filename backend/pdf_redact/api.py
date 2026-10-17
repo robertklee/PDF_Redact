@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse
 
 from .config import Settings
 from .core import ENGINE_LOCK
+from .core.annots import marked_bytes, read_redact_annots
 from .core.inspect import document_notices, page_infos
 from .core.pii import DETECTORS, DETECTORS_BY_ID, CustomPattern, detect, keyword_pattern
 from .core.redact import redact_bytes
@@ -41,6 +42,8 @@ from .models import (
     DetectorOut,
     DetectRequest,
     DocumentOut,
+    MarkedRequest,
+    MarkOut,
     MatchOut,
     NoticeOut,
     OutputOut,
@@ -103,6 +106,9 @@ def _document_out(document: StoredDocument) -> DocumentOut:
         locked = document.locked
         pages = [] if locked else [PageOut(**asdict(p)) for p in page_infos(document.doc)]
         notices = [NoticeOut(**asdict(n)) for n in document_notices(document.doc)]
+        redactions = (
+            [] if locked else [MarkOut.from_engine(m) for m in read_redact_annots(document.doc)]
+        )
     return DocumentOut(
         id=document.id,
         filename=document.filename,
@@ -112,6 +118,7 @@ def _document_out(document: StoredDocument) -> DocumentOut:
         page_count=len(pages),
         pages=pages,
         notices=notices,
+        redactions=redactions,
     )
 
 
@@ -363,6 +370,22 @@ REPORT_FORMATS = {
     "json": ("application/json", "redaction_log.json"),
     "csv": ("text/csv; charset=utf-8", "redaction_log.csv"),
 }
+
+
+@router.post("/documents/{document_id}/marked")
+def export_marked(document_id: str, body: MarkedRequest, store: StoreDep) -> Response:
+    """The original with the marks as unapplied /Redact annotations, for review in other tools."""
+    document = _unlocked(store, document_id)
+    data = document.path.read_bytes()
+    with ENGINE_LOCK:
+        try:
+            out = marked_bytes(data, [m.to_engine() for m in body.marks], document.password)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+    filename = f"{_stem(document.filename)}_marked.pdf"
+    return Response(
+        out, media_type="application/pdf", headers={"Content-Disposition": _attachment(filename)}
+    )
 
 
 @router.get("/outputs/{output_id}/report")
