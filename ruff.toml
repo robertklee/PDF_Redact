@@ -1,0 +1,2 @@
+# For run.py and scripts/: the same settings as the backend.
+extend = "backend/pyproject.toml"

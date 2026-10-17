@@ -101,10 +101,14 @@ cd backend && .venv/bin/python -m tests.corpus /tmp/pdfr-corpus
 ### Tests
 
 ```sh
-cd backend && .venv/bin/pytest && .venv/bin/ruff check && .venv/bin/ruff format --check
+cd backend && .venv/bin/pytest && .venv/bin/ruff check .. && .venv/bin/ruff format --check ..
 cd frontend && npm run typecheck && npm run lint && npm test
 cd frontend && npx playwright install chromium && npm run e2e   # end-to-end, needs the backend venv
+python3 run.py --wheel && python3 scripts/smoke_test_wheel.py dist/pdf_redact-*.whl
 ```
+
+[CI](.github/workflows/ci.yml) runs these on every push to `main` and every pull request: the
+backend on Python 3.11 and 3.14, and the wheel build and smoke test on Linux, macOS and Windows.
 
 ## License
 
