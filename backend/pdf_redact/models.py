@@ -137,6 +137,7 @@ class StatsOut(ApiModel):
     text_marks_as_area: list[str]
     safety_pass_glyphs: int
     overlays_skipped: list[str]
+    replacement_text_removed: int
 
 
 class OutputOut(ApiModel):

@@ -12,7 +12,8 @@ marks are applied in passes:
 3. **Area marks** remove everything they touch (text, image pixels, graphics), just like Acrobat.
 
 A safety pass then removes any selected glyph that survived the bands (e.g. fonts with unusual
-metrics) using the glyph's full box.
+metrics) using the glyph's full box. Finally, marked-content replacement text (``/ActualText``),
+which MuPDF keeps and which can repeat the removed words, is stripped from redacted pages.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from typing import Literal
 import pymupdf
 
 from .geometry import contains_point, page_area, to_unrotated, union
+from .objects import strip_page_text_properties
 from .overlay import DIRECTIONS, Appearance, drawable, layout_overlay
 from .text import Char, extract_lines
 
@@ -76,6 +78,8 @@ class RedactStats:
     safety_pass_glyphs: int = 0
     # Marks with overlay text that did not fit (in at least one of their boxes).
     overlays_skipped: list[str] = field(default_factory=list)
+    # Content streams and property lists whose replacement text (/ActualText etc.) was removed.
+    replacement_text_removed: int = 0
 
 
 def mark_regions(page: pymupdf.Page, mark: Mark) -> list[pymupdf.Rect]:
@@ -268,7 +272,9 @@ def apply_marks(
         # apply_redactions() would apply these too, and elsewhere they would be left unapplied.
         _delete_existing_redact_annots(page)
     for pno in sorted(by_page):
-        redact_page(doc[pno], by_page[pno], options, stats)
+        page = doc[pno]
+        redact_page(page, by_page[pno], options, stats)
+        stats.replacement_text_removed += strip_page_text_properties(doc, page)
     stats.pages = sorted(by_page)
     return stats
 

@@ -18,6 +18,7 @@ from tests.corpus import ABOVE, BELOW, SECRET
 from tests.helpers import (
     area_mark,
     display_hits,
+    leaks,
     mupdf_text,
     pypdf_text,
     raw_contains,
@@ -29,6 +30,10 @@ def _redact_and_verify(data, marks, options=None, password=None):
     out, stats = redact_bytes(data, marks, options, password)
     verification = verify_bytes(out, marks, options, password)
     return out, stats, verification
+
+
+def _mark_check(verification):
+    return [c for c in verification.checks if c.name == "mark"][-1]
 
 
 def _assert_gone(out: bytes, needle: str = SECRET, password: str | None = None) -> None:
@@ -156,7 +161,7 @@ def test_area_mark_blanks_scanned_image_region() -> None:
     # The original image is noisy under the same region, so the check is meaningful.
     bad = verify_bytes(data, marks)
     assert not bad.passed
-    assert "image pixels" in bad.checks[-1].message
+    assert "image pixels" in _mark_check(bad).message
 
 
 def test_image_mode_remove_drops_whole_image() -> None:
@@ -177,15 +182,15 @@ def test_vector_graphics_covered_removed_and_crossing_warned() -> None:
         fills = [d.get("fill") for d in doc[0].get_drawings()]
     assert (1.0, 0.0, 0.0) not in fills  # fully covered red square is gone
     assert verification.passed
-    assert verification.checks[-1].status == "warn"
-    assert "vector path" in verification.checks[-1].message
+    assert _mark_check(verification).status == "warn"
+    assert "vector path" in _mark_check(verification).message
 
 
 def test_vector_graphics_touched_mode_removes_crossing_line() -> None:
     data = corpus.vector_graphics()
     marks = [area_mark((200, 170, 280, 230))]
     out, _, verification = _redact_and_verify(data, marks, RedactOptions(graphics="touched"))
-    assert verification.checks[-1].status == "pass"
+    assert _mark_check(verification).status == "pass"
 
 
 def _all_text_ignoring_cropbox(data: bytes) -> str:
@@ -262,7 +267,7 @@ def test_verification_flags_unredacted_text() -> None:
     marks = [text_mark(display_hits(data, SECRET))]
     result = verify_bytes(data, marks)
     assert not result.passed
-    assert "text character" in result.checks[-1].message
+    assert "text character" in _mark_check(result).message
 
 
 def _search_marks(data: bytes, query: str, pages=None, overlay: str = ""):
@@ -360,3 +365,30 @@ def test_display_space_roundtrip_matches_rotation() -> None:
         assert page.rect.width == pytest.approx(842)  # A4 portrait shown landscape
         r = to_display(page, page.search_for(SECRET)[0])
         assert page.rect.contains(r)
+
+
+def test_replacement_text_is_removed_from_redacted_pages() -> None:
+    data = corpus.actual_text()
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        hits = [tuple(to_display(doc[0], r)) for r in doc[0].search_for(SECRET)]
+    assert len(hits) == 3
+    marks = [area_mark(r, mark_id=f"a{i}") for i, r in enumerate(hits)]
+    out, stats, verification = _redact_and_verify(data, marks)
+    assert stats.replacement_text_removed >= 3
+    assert verification.passed
+    assert any(c.name == "replacement-text" and c.status == "pass" for c in verification.checks)
+    _assert_gone(out)
+    assert not leaks(out, SECRET)
+    assert ABOVE in mupdf_text(out)
+
+
+def test_leftover_replacement_text_fails_verification() -> None:
+    data = corpus.actual_text()
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        hit = tuple(to_display(doc[0], doc[0].search_for(SECRET)[0]))
+    mark = area_mark(hit)
+    # The untouched original still has /ActualText on the marked page.
+    verification = verify_bytes(data, [mark])
+    check = next(c for c in verification.checks if c.name == "replacement-text")
+    assert check.status == "fail"
+    assert not verification.passed

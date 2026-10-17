@@ -111,6 +111,8 @@ export interface OutputInfo {
     safetyPassGlyphs: number;
     /** Marks whose overlay text was left out because it could not fit. */
     overlaysSkipped: string[];
+    /** Streams and property lists on redacted pages that had replacement text removed. */
+    replacementTextRemoved: number;
   };
   verification: {
     passed: boolean;

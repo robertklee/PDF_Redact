@@ -33,6 +33,59 @@ def raw_contains(data: bytes, needle: str) -> bool:
     return needle.encode() in data or needle.encode().hex().encode() in lowered
 
 
+def _pypdf_dump(obj, out: list[str], seen: set[int]) -> None:
+    if isinstance(obj, pypdf.generic.IndirectObject):
+        if obj.idnum in seen:
+            return
+        seen.add(obj.idnum)
+        obj = obj.get_object()
+    if isinstance(obj, pypdf.generic.StreamObject):
+        try:
+            data = obj.get_data()
+        except Exception:  # undecodable image data etc.
+            data = obj._data
+        out.append(data.decode("latin-1"))
+        out.append(data.hex())
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            out.append(str(key))
+            _pypdf_dump(value, out, seen)
+    elif isinstance(obj, list):
+        for value in obj:
+            _pypdf_dump(value, out, seen)
+    elif isinstance(obj, (bytes, str)):
+        out.append(str(obj) if isinstance(obj, str) else obj.decode("latin-1"))
+        raw = obj.encode("utf-8") if isinstance(obj, str) else bytes(obj)
+        out.append(raw.hex())
+
+
+def pdf_dump(data: bytes, password: str | None = None) -> str:
+    """Every object reachable from the trailer, with decoded streams and hex forms of strings,
+    as seen by pypdf (an engine independent of MuPDF). Use `leaks()` to search it."""
+    reader = pypdf.PdfReader(io.BytesIO(data))
+    if reader.is_encrypted:
+        reader.decrypt(password or "")
+    out: list[str] = []
+    seen: set[int] = set()
+    _pypdf_dump(reader.trailer, out, seen)
+    for num in range(1, int(reader.trailer["/Size"])):
+        try:
+            obj = reader.get_object(num)
+        except Exception:
+            continue
+        if obj is not None and num not in seen:
+            seen.add(num)
+            _pypdf_dump(obj, out, seen)
+    return "\n".join(out)
+
+
+def leaks(data: bytes, needle: str, password: str | None = None) -> bool:
+    """Whether `needle` appears anywhere in the file's objects, decoded, in plain or hex form."""
+    dump = pdf_dump(data, password).lower()
+    forms = [needle, needle.encode().hex(), needle.encode("utf-16-be").hex()]
+    return any(form.lower() in dump for form in forms)
+
+
 def display_hits(data: bytes, needle: str, page: int = 0, password: str | None = None):
     """Display-space rects of `needle` on a page, built from tight char boxes like the UI does."""
     with pymupdf.open(stream=data, filetype="pdf") as doc:

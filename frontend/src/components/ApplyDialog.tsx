@@ -218,6 +218,9 @@ function Result(props: ResultProps) {
         {stats.safetyPassGlyphs > 0 && (
           <li>{plural(stats.safetyPassGlyphs, "extra character")} removed by the safety pass</li>
         )}
+        {stats.replacementTextRemoved > 0 && (
+          <li>Hidden replacement text (ActualText) removed from redacted pages</li>
+        )}
         {stats.textMarksAsArea.length > 0 && (
           <li>
             {plural(stats.textMarksAsArea.length, "text mark")} matched no characters and{" "}

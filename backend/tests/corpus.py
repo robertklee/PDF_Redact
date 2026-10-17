@@ -181,6 +181,39 @@ def hidden_text() -> bytes:
     return doc.tobytes()
 
 
+def actual_text() -> bytes:
+    """Marked content whose /ActualText repeats the secret: inline, through a named property
+    list, and inside a form XObject."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 120), ABOVE, fontsize=12)
+    props = doc.get_new_xref()
+    doc.update_object(props, f"<</ActualText({SECRET}-NAMED)/MCID 0>>")
+    form = doc.get_new_xref()
+    doc.update_object(form, "<</Type/XObject/Subtype/Form/BBox[0 0 612 792]/Resources<<>>>>")
+    doc.update_stream(
+        form,
+        f"/Span <</ActualText({SECRET}-FORM)>> BDC BT /helv 12 Tf 72 620 Td "
+        f"({SECRET}) Tj ET EMC".encode(),
+    )
+    doc.xref_set_key(form, "Resources/Font/helv", f"{page.get_fonts()[0][0]} 0 R")
+    resources = int(doc.xref_get_key(page.xref, "Resources")[1].split()[0])
+    doc.xref_set_key(resources, "Properties", f"<</P0 {props} 0 R>>")
+    doc.xref_set_key(resources, "XObject", f"<</Fm0 {form} 0 R>>")
+    xref = page.get_contents()[0]
+    doc.update_stream(
+        xref,
+        doc.xref_stream(xref)
+        + (
+            f"\nq /Span <</ActualText({SECRET}-INLINE)/Lang(en)>> BDC BT /helv 12 Tf 72 700 Td "
+            f"({SECRET}) Tj ET EMC Q\n"
+            f"q /Span /P0 BDC BT /helv 12 Tf 72 680 Td ({SECRET}) Tj ET EMC Q\n"
+            f"q /Fm0 Do Q\n"
+        ).encode(),
+    )
+    return doc.tobytes()
+
+
 def incremental_update() -> bytes:
     """The secret was removed in a later incremental save but survives in the earlier revision."""
     doc = pymupdf.open()
@@ -283,6 +316,7 @@ FIXTURES: dict[str, Callable[[], bytes]] = {
     "javascript": javascript,
     "metadata": metadata,
     "hidden_text": hidden_text,
+    "actual_text": actual_text,
     "incremental_update": incremental_update,
     "encrypted": encrypted,
     "multi_column": multi_column,

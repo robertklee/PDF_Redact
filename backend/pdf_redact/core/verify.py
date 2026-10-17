@@ -12,6 +12,7 @@ from typing import Literal
 import pymupdf
 
 from .geometry import contains_point, inset, overlaps, segment_intersects_rect, touches
+from .objects import page_has_text_properties
 from .overlay import drawable
 from .redact import Mark, RedactOptions, mark_regions, open_pdf
 from .search import normalize, page_indexes
@@ -265,6 +266,21 @@ def residual_checks(
     return checks
 
 
+def replacement_text_check(doc: pymupdf.Document, pages: list[int]) -> Check:
+    found = [pno for pno in pages if page_has_text_properties(doc, doc[pno]) is not False]
+    if found:
+        return Check(
+            "replacement-text",
+            "fail",
+            f"Replacement text (/ActualText) that may repeat redacted words remains on "
+            f"{_pages(found)}",
+            found[0] if len(found) == 1 else None,
+        )
+    return Check(
+        "replacement-text", "pass", "No replacement text (/ActualText) left on redacted pages"
+    )
+
+
 def verify_bytes(
     data: bytes,
     marks: Iterable[Mark],
@@ -295,6 +311,8 @@ def verify_bytes(
         for pno in sorted(by_page):
             verifier = _PageVerifier(doc, doc[pno], by_page[pno], options)
             result.checks += [verifier.verify(m) for m in by_page[pno]]
+        if by_page:
+            result.checks.append(replacement_text_check(doc, sorted(by_page)))
         if search_terms:
             overlays = [drawable(m.appearance.overlay_text) for m in marks]
             result.checks += residual_checks(doc, search_terms, overlays)
