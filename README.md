@@ -39,6 +39,13 @@ See [PLAN.md](PLAN.md) for the feature specification and milestones.
   over scans), and content outside the visible page area. Each option can be turned off; bookmarks
   and page labels can be removed too. With no marks, **Remove hidden information…** does this on
   its own. Replacement and alternate text (`ActualText`, `Alt`) is always removed from redacted pages.
+- **Reports**: after applying, download a printable HTML report, the full audit log (JSON) or the
+  marks as CSV, with file hashes, options, hidden information removed and verification results.
+  Removed text appears as its length by default, or as a SHA-256 hash or in full if you choose.
+- **Projects** (`⌘S`/`Ctrl+S`): save the marks to a `.redact.json` file and load them later to carry on.
+- **Acrobat interop**: **Export marked PDF** writes an unredacted copy with the marks as standard
+  redaction annotations, to review or apply in Acrobat and other tools. Redaction annotations already
+  in a PDF become marks when you open it.
 
 ## Requirements
 
