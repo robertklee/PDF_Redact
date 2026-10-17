@@ -117,12 +117,12 @@ test("redacts text on a rotated page", async ({ page }, info) => {
 test("unlocks an encrypted PDF and keeps its protection", async ({ page }, info) => {
   await chooseFile(page, "encrypted");
 
-  await page.getByLabel("Password").fill("wrong");
+  await page.getByLabel("Password", { exact: true }).fill("wrong");
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page.locator(".modal .error")).toBeVisible();
 
   const textResponse = page.waitForResponse((r) => r.url().endsWith("/pages/0/text"));
-  await page.getByLabel("Password").fill("user-pw");
+  await page.getByLabel("Password", { exact: true }).fill("user-pw");
   await page.getByRole("button", { name: "Open", exact: true }).click();
   const text = await (await textResponse).json();
   await selectText(page, 0, text, SECRET);

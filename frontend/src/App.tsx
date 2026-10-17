@@ -56,7 +56,8 @@ function useGlobalShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const { phase, zoomBy, setZoom } = useStore.getState();
-      if (phase !== "ready" || document.querySelector(".modal")) return;
+      // Handled already (e.g. by the marks list), or a dialog is open.
+      if (e.defaultPrevented || phase !== "ready" || document.querySelector(".modal")) return;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (mod && !e.altKey && !e.shiftKey && key === "f") {

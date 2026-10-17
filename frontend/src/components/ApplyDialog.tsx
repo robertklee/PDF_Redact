@@ -9,6 +9,7 @@ import { useStore } from "../store";
 import type { Check, GraphicsMode, ImageMode, Mark, OutputInfo, ReportFormat, ReportText } from "../types";
 import { HiddenInfoOptions } from "./HiddenInfoOptions";
 import { JobProgress } from "./JobProgress";
+import { Modal } from "./Modal";
 
 const IMAGE_MODES: { value: ImageMode; label: string; hint: string }[] = [
   { value: "pixels", label: "Blank the covered pixels", hint: "Recommended" },
@@ -95,17 +96,11 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
 
   const busy = phase.name === "working";
   const stop = () => job.current?.abort();
-  const close = () => (busy ? stop() : onClose());
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => !busy && e.target === e.currentTarget && close()}>
-      <div
-        className="modal apply-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="apply-title"
-        onKeyDown={(e) => e.key === "Escape" && close()}
-      >
+    // While working, Escape stops the work (like the Cancel button) but a stray click doesn't.
+    <Modal labelledBy="apply-title" onDismiss={(how) => (!busy ? onClose() : how === "escape" && stop())}>
+      <div className="modal apply-dialog">
         {phase.name === "done" ? (
           <Result
             output={phase.output}
@@ -205,16 +200,18 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
               </p>
             )}
             {busy ? (
-              <JobProgress progress={progress} label={withMarks ? "Applying redactions" : "Removing hidden information"}
+              <JobProgress
+                progress={progress}
+                label={withMarks ? "Applying redactions" : "Removing hidden information"}
                 onCancel={stop}
                 focusCancel
               />
             ) : (
               <div className="actions">
-                <button type="button" onClick={close}>
+                <button type="button" onClick={onClose}>
                   Cancel
                 </button>
-                <button className="danger" autoFocus onClick={() => void apply()}>
+                <button className="danger" autoFocus data-autofocus onClick={() => void apply()}>
                   {withMarks ? "Apply redactions" : "Remove hidden information"}
                 </button>
               </div>
@@ -222,7 +219,7 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
           </>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }
 

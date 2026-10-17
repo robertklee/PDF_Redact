@@ -1,5 +1,4 @@
 import { type ChangeEvent, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { allCodeSets, useCodeSets } from "../codeSets";
 import {
   type CodeSet,
@@ -12,6 +11,7 @@ import {
 } from "../lib/codes";
 import { saveTextFile } from "../lib/files";
 import { plural } from "../lib/format";
+import { Modal } from "./Modal";
 
 type Draft = Pick<CodeSet, "name" | "codes">;
 
@@ -102,15 +102,9 @@ export function CodeSetsDialog({ onClose }: { onClose: () => void }) {
   const setCode = (i: number, change: Partial<Draft["codes"][number]>) =>
     edit({ codes: shown.codes.map((c, j) => (j === i ? { ...c, ...change } : c)) });
 
-  return createPortal(
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div
-        className="modal code-sets-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="code-sets-title"
-        onKeyDown={(e) => e.key === "Escape" && close()}
-      >
+  return (
+    <Modal labelledBy="code-sets-title" onDismiss={close}>
+      <div className="modal code-sets-dialog">
         <h2 id="code-sets-title">Code sets</h2>
         <div className="code-sets-layout">
           <div className="code-sets-list">
@@ -133,7 +127,8 @@ export function CodeSetsDialog({ onClose }: { onClose: () => void }) {
             <input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={importFile} />
           </div>
 
-          <div className="code-set-editor">
+          {/* Focusable so a long built-in set can be scrolled with the keyboard. */}
+          <div className="code-set-editor" tabIndex={0} role="group" aria-label={selected.name}>
             {selected.builtIn ? (
               <p className="muted small">
                 {selected.name} is built in and cannot be changed. Duplicate it to make your own version.
@@ -245,7 +240,6 @@ export function CodeSetsDialog({ onClose }: { onClose: () => void }) {
           <button onClick={close}>Close</button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }

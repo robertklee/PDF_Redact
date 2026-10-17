@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 import { formatPages, parsePageRanges } from "../lib/pages";
 import { useMarks } from "../marks";
 import { useStore } from "../store";
+import { Modal } from "./Modal";
 
 /** Mark whole pages, chosen by number or range. */
 export function PageMarkDialog({ onClose }: { onClose: () => void }) {
@@ -31,23 +32,27 @@ export function PageMarkDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <form className="modal" onSubmit={submit} onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <h2>Mark pages</h2>
+    <Modal labelledBy="mark-pages-title" onDismiss={onClose}>
+      <form className="modal" onSubmit={submit}>
+        <h2 id="mark-pages-title">Mark pages</h2>
         <p>
           Redacts everything on the chosen pages, including content outside the visible page area.
         </p>
         <label className="field">
           <span>Pages (1–{doc.pageCount})</span>
           <input
-            autoFocus
+            data-autofocus
             value={value}
             placeholder="e.g. 1, 4-7, odd, all"
             onChange={(e) => setValue(e.target.value)}
             onBlur={() => setTouched(true)}
           />
         </label>
-        {result.error && touched && <p className="error">{result.error}</p>}
+        {result.error && touched && (
+          <p className="error" role="alert">
+            {result.error}
+          </p>
+        )}
         {result.pages && (
           <p className="muted">
             {pages.length
@@ -65,6 +70,6 @@ export function PageMarkDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }

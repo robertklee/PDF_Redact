@@ -102,7 +102,8 @@ export function Viewer() {
   for (let i = first; i <= last; i++) visible.push(i);
 
   return (
-    <div className="viewer" ref={ref} onScroll={onScroll}>
+    // Focusable so the pages can be scrolled with the keyboard.
+    <div className="viewer" ref={ref} onScroll={onScroll} tabIndex={0} role="region" aria-label="Pages">
       <div className="viewer-inner" style={{ height: layout.height, width: innerWidth }}>
         {visible.map((i) => (
           <PageView

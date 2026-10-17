@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { useStore } from "../store";
+import { Modal } from "./Modal";
 
 export function PasswordDialog() {
   const doc = useStore((s) => s.doc);
@@ -22,20 +23,24 @@ export function PasswordDialog() {
   }
 
   return (
-    <div className="modal-backdrop">
+    <Modal labelledBy="password-title">
       <form className="modal" onSubmit={submit}>
-        <h2>Password required</h2>
+        <h2 id="password-title">Password required</h2>
         <p>
           <strong>{doc?.filename}</strong> is protected. Enter its password to open it.
         </p>
         <input
           type="password"
-          autoFocus
+          data-autofocus
           aria-label="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
         <div className="actions">
           <button type="button" onClick={() => void closeDocument()}>
             Cancel
@@ -45,6 +50,6 @@ export function PasswordDialog() {
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
