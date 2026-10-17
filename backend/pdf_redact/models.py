@@ -9,6 +9,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validat
 from pydantic.alias_generators import to_camel
 
 from .core.redact import Appearance, Mark, RedactOptions
+from .core.report import MarkInfo
 from .core.sanitize import SanitizeOptions
 
 HexColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
@@ -59,6 +60,10 @@ class MarkIn(ApiModel):
     kind: Literal["text", "area", "page"]
     rects: list[Rect] = Field(default_factory=list, max_length=10_000)
     appearance: AppearanceIn = Field(default_factory=AppearanceIn)
+    # For the audit log only.
+    source: Literal["manual", "search", "detect"] = "manual"
+    category: str | None = Field(default=None, max_length=100)
+    created_at: str | None = Field(default=None, max_length=40)
 
     @field_validator("rects")
     @classmethod
@@ -69,6 +74,9 @@ class MarkIn(ApiModel):
 
     def to_engine(self) -> Mark:
         return Mark(self.id, self.page, self.kind, list(self.rects), self.appearance.to_engine())
+
+    def info(self) -> MarkInfo:
+        return MarkInfo(self.source, self.category, self.created_at)
 
 
 class SanitizeIn(ApiModel):

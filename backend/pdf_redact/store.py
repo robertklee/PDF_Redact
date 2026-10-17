@@ -12,6 +12,7 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pymupdf
 
@@ -44,6 +45,8 @@ class StoredOutput:
     path: Path
     size: int
     sha256: str
+    # Audit record of the application, including the removed text (see core/report.py).
+    audit: dict[str, Any] | None = None
 
 
 class Store:

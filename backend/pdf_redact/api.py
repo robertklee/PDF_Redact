@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+import json
 import re
 import uuid
 from collections.abc import Iterable, Iterator
 from dataclasses import asdict
-from typing import Annotated
+from typing import Annotated, Literal
+from urllib.parse import quote
 
 import pymupdf
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -20,6 +22,16 @@ from .core import ENGINE_LOCK
 from .core.inspect import document_notices, page_infos
 from .core.pii import DETECTORS, DETECTORS_BY_ID, CustomPattern, detect, keyword_pattern
 from .core.redact import redact_bytes
+from .core.report import (
+    TEXT_MODES,
+    FileInfo,
+    TextMode,
+    audit_csv,
+    audit_html,
+    audit_view,
+    build_audit,
+    marked_text,
+)
 from .core.search import Match, compile_query, find
 from .core.text import page_text_payload
 from .core.verify import verify_bytes
@@ -293,16 +305,31 @@ def apply_redactions(document_id: str, body: ApplyRequest, store: StoreDep) -> O
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
         verification = verify_bytes(out, marks, options, document.password, body.search_terms)
+        output_info = FileInfo(
+            redacted_filename(document.filename), len(out), hashlib.sha256(out).hexdigest()
+        )
+        audit = build_audit(
+            doc=document.doc,
+            source=FileInfo(document.filename, document.size, document.sha256),
+            output=output_info,
+            marks=marks,
+            infos={m.id: m.info() for m in body.marks},
+            texts=marked_text(document.doc, marks),
+            options=options,
+            stats=stats,
+            verification=verification,
+        )
 
     path = store.new_path()
     path.write_bytes(out)
     output = StoredOutput(
         id=uuid.uuid4().hex,
         document_id=document.id,
-        filename=redacted_filename(document.filename),
+        filename=output_info.filename,
         path=path,
-        size=len(out),
-        sha256=hashlib.sha256(out).hexdigest(),
+        size=output_info.size,
+        sha256=output_info.sha256,
+        audit=audit,
     )
     store.add_output(output)
     return OutputOut(
@@ -317,6 +344,52 @@ def apply_redactions(document_id: str, body: ApplyRequest, store: StoreDep) -> O
             counts=verification.counts(),
             checks=[CheckOut(**asdict(c)) for c in verification.checks],
         ),
+    )
+
+
+def _stem(filename: str) -> str:
+    return filename[:-4] if filename.lower().endswith(".pdf") else filename
+
+
+def _attachment(filename: str) -> str:
+    quoted = quote(filename)
+    if quoted == filename:
+        return f'attachment; filename="{filename}"'
+    return f"attachment; filename*=utf-8''{quoted}"
+
+
+REPORT_FORMATS = {
+    "html": ("text/html; charset=utf-8", "redaction_report.html"),
+    "json": ("application/json", "redaction_log.json"),
+    "csv": ("text/csv; charset=utf-8", "redaction_log.csv"),
+}
+
+
+@router.get("/outputs/{output_id}/report")
+def download_report(
+    output_id: str,
+    store: StoreDep,
+    format: Literal["html", "json", "csv"] = "html",
+    text: Annotated[TextMode, Query(description=f"One of {', '.join(TEXT_MODES)}")] = "length",
+) -> Response:
+    try:
+        output = store.output(output_id)
+    except KeyError:
+        raise HTTPException(404, "Output not found") from None
+    if output.audit is None:
+        raise HTTPException(404, "No report for this output")
+    view = audit_view(output.audit, text)
+    if format == "html":
+        content = audit_html(view)
+    elif format == "csv":
+        # A byte order mark makes spreadsheet apps read the file as UTF-8.
+        content = "\ufeff" + audit_csv(view)
+    else:
+        content = json.dumps(view, indent=2, ensure_ascii=False)
+    media_type, suffix = REPORT_FORMATS[format]
+    filename = f"{_stem(output.audit['input']['filename'])}_{suffix}"
+    return Response(
+        content, media_type=media_type, headers={"Content-Disposition": _attachment(filename)}
     )
 
 

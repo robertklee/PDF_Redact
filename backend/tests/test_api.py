@@ -360,3 +360,48 @@ def test_detect_errors(client) -> None:
     assert res.status_code == 422
     assert "“Bad”" in res.json()["detail"]
     assert client.post(url, json={}).json() == {"matches": [], "truncated": False}
+
+
+def test_reports(client) -> None:
+    data = corpus.text_basic()
+    doc_id = upload(client, data).json()["id"]
+    mark = {
+        **_mark(display_hits(data, SECRET), overlayText="(b)(6)"),
+        "source": "detect",
+        "category": "SSN",
+        "createdAt": "2024-05-06T07:00:00Z",
+    }
+    output = client.post(f"/api/documents/{doc_id}/apply", json={"marks": [mark]}).json()
+    url = f"/api/outputs/{output['id']}/report"
+
+    log = client.get(url, params={"format": "json"})
+    assert log.status_code == 200
+    assert (
+        log.headers["content-disposition"]
+        == "attachment; filename*=utf-8''case%20file_redaction_log.json"
+    )
+    audit = log.json()
+    assert audit["input"]["filename"] == "case file.pdf"
+    assert audit["input"]["sha256"] == hashlib.sha256(data).hexdigest()
+    assert audit["output"]["sha256"] == output["sha256"]
+    assert audit["textInReport"] == "length"
+    record = audit["marks"][0]
+    assert (record["source"], record["category"]) == ("detect", "SSN")
+    assert record["createdAt"] == "2024-05-06T07:00:00Z"
+    assert record["textLength"] == len(SECRET)
+
+    html = client.get(url)
+    assert html.headers["content-type"].startswith("text/html")
+    assert html.headers["content-disposition"].endswith("case%20file_redaction_report.html")
+    assert "attachment" in html.headers["content-disposition"]
+    csv_file = client.get(url, params={"format": "csv"})
+    assert csv_file.headers["content-type"].startswith("text/csv")
+    assert csv_file.content.startswith("\ufeff".encode())
+    for res in (log, html, csv_file):
+        assert SECRET not in res.text
+
+    plain = client.get(url, params={"format": "json", "text": "plain"}).json()
+    assert plain["marks"][0]["text"] == SECRET
+    assert client.get(url, params={"text": "everything"}).status_code == 422
+    assert client.get(url, params={"format": "pdf"}).status_code == 422
+    assert client.get("/api/outputs/nope/report").status_code == 404
