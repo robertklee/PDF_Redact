@@ -225,7 +225,7 @@ function Result(props: ResultProps) {
           </li>
         )}
         {stats.replacementTextRemoved > 0 && (
-          <li>Hidden replacement text (ActualText) removed from redacted pages</li>
+          <li>Hidden replacement and alternate text removed from redacted pages</li>
         )}
         {stats.textMarksAsArea.length > 0 && (
           <li>

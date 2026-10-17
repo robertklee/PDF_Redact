@@ -193,3 +193,44 @@ def delete_key(doc: pymupdf.Document, xref: int, path: str) -> bool:
         return False
     mupdf.pdf_dict_dels(obj, last)
     return True
+
+
+def _struct_page(doc: pymupdf.Document, xref: int) -> int | None:
+    """The page object a structure element belongs to: its own /Pg or the nearest ancestor's."""
+    for _ in range(MAX_INHERITANCE):
+        kind, value = doc.xref_get_key(xref, "Pg")
+        if kind == "xref":
+            return ref_xref(value)
+        kind, value = doc.xref_get_key(xref, "P")
+        parent = ref_xref(value) if kind == "xref" else None
+        if parent is None or doc.xref_get_key(parent, "Type")[1] == "/StructTreeRoot":
+            return None
+        xref = parent
+    return None
+
+
+def struct_text_elements(doc: pymupdf.Document, pages: set[int]) -> list[int]:
+    """Structure elements on the given pages (page object xrefs) that carry replacement or
+    alternate text. Elements whose page is unknown are included, to be safe."""
+    if doc.xref_get_key(doc.pdf_catalog(), "StructTreeRoot")[0] == "null":
+        return []
+    found = []
+    for xref in range(1, doc.xref_length()):
+        if doc.xref_get_key(xref, "S")[0] != "name":
+            continue
+        if not any(doc.xref_get_key(xref, k.decode())[0] != "null" for k in TEXT_PROPERTIES):
+            continue
+        page = _struct_page(doc, xref)
+        if page is None or page in pages:
+            found.append(xref)
+    return found
+
+
+def strip_struct_text(doc: pymupdf.Document, pages: set[int]) -> int:
+    """Remove ``/ActualText``, ``/Alt`` and ``/E`` from structure elements on the given pages.
+    Returns the number of elements changed."""
+    elements = struct_text_elements(doc, pages)
+    for xref in elements:
+        for key in TEXT_PROPERTIES:
+            delete_key(doc, xref, key.decode())
+    return len(elements)

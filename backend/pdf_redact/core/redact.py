@@ -26,7 +26,7 @@ from typing import Literal
 import pymupdf
 
 from .geometry import contains_point, full_extent, overlaps, page_area, to_unrotated
-from .objects import delete_key, strip_page_text_properties
+from .objects import delete_key, strip_page_text_properties, strip_struct_text
 from .overlay import DIRECTIONS, Appearance, drawable, layout_overlay
 from .removal import apply_regions, removal_bands, remove_glyphs
 from .sanitize import SanitizeAction, SanitizeOptions, sanitize_document
@@ -288,6 +288,9 @@ def apply_marks(
         regions = [r for m in by_page[pno] for r in mark_regions(page, m)]
         stats.annotations_removed += _remove_covered_annotations(page, regions)
         stats.replacement_text_removed += strip_page_text_properties(doc, page)
+    if by_page:
+        pages = {doc[pno].xref for pno in by_page}
+        stats.replacement_text_removed += strip_struct_text(doc, pages)
     stats.pages = sorted(by_page)
     return stats
 

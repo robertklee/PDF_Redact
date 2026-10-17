@@ -479,3 +479,17 @@ def test_page_mark_removes_text_outside_the_media_box() -> None:
     check = _mark_check(verify_bytes(data, [page]))
     assert check.status == "fail"
     assert "off the page" in check.message
+
+
+def test_structure_alt_and_actual_text_removed_on_redacted_pages() -> None:
+    data = corpus.tagged()
+    marks = [text_mark(display_hits(data, SECRET))]
+    original = verify_bytes(data, marks)
+    check = next(c for c in original.checks if c.name == "replacement-text")
+    assert check.status == "fail"
+    assert "structure element" in check.message
+    out, stats, verification = _redact_and_verify(data, marks)
+    assert verification.passed, verification.checks
+    assert stats.replacement_text_removed == 2
+    _assert_gone(out)
+    assert leaks(out, "Chart of sales")  # page 2 was not redacted

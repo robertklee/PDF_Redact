@@ -296,6 +296,29 @@ def actual_text() -> bytes:
     return doc.tobytes()
 
 
+def tagged() -> bytes:
+    """A tagged PDF whose structure elements carry alternate and replacement text: a figure on
+    page 1, a span that inherits page 1 from its parent, and a figure on page 2."""
+    doc = pymupdf.open()
+    doc.new_page()
+    doc.new_page()
+    first, second = doc[0], doc[1]
+    _three_lines(first)
+    second.insert_text((72, 120), "Second page", fontsize=12)
+    root, figure, para, span, other = (doc.get_new_xref() for _ in range(5))
+    elem = "/Type/StructElem/S"
+    doc.update_object(root, f"<</Type/StructTreeRoot/K[{figure} 0 R {para} 0 R {other} 0 R]>>")
+    on_first = f"/P {root} 0 R/Pg {first.xref} 0 R"
+    doc.update_object(figure, f"<<{elem}/Figure{on_first}/Alt(Photo of {SECRET})>>")
+    doc.update_object(para, f"<<{elem}/P{on_first}/K[{span} 0 R]>>")
+    doc.update_object(span, f"<<{elem}/Span/P {para} 0 R/ActualText({SECRET}-SPAN)>>")
+    on_second = f"/P {root} 0 R/Pg {second.xref} 0 R"
+    doc.update_object(other, f"<<{elem}/Figure{on_second}/Alt(Chart of sales)>>")
+    doc.xref_set_key(doc.pdf_catalog(), "StructTreeRoot", f"{root} 0 R")
+    doc.xref_set_key(doc.pdf_catalog(), "MarkInfo", "<</Marked true>>")
+    return doc.tobytes()
+
+
 def incremental_update() -> bytes:
     """The secret was removed in a later incremental save but survives in the earlier revision."""
     doc = pymupdf.open()
@@ -391,6 +414,7 @@ FIXTURES: dict[str, Callable[[], bytes]] = {
     "off_page_text": off_page_text,
     "outside_crop": outside_crop,
     "layers": layers,
+    "tagged": tagged,
     "image_with_ocr_text": image_with_ocr_text,
     "scanned_image": scanned_image,
     "vector_graphics": vector_graphics,

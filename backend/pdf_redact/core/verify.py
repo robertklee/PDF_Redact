@@ -20,7 +20,7 @@ from .geometry import (
     to_unrotated,
     touches,
 )
-from .objects import page_has_text_properties
+from .objects import page_has_text_properties, struct_text_elements
 from .overlay import drawable
 from .redact import Mark, RedactOptions, mark_regions, open_pdf
 from .sanitize import sanitize_findings
@@ -317,13 +317,21 @@ def residual_checks(
 
 def replacement_text_check(doc: pymupdf.Document, pages: list[int]) -> Check:
     found = [pno for pno in pages if page_has_text_properties(doc, doc[pno]) is not False]
+    elements = struct_text_elements(doc, {doc[pno].xref for pno in pages})
+    problems = []
     if found:
-        return Check(
-            "replacement-text",
-            "fail",
+        problems.append(
             f"Replacement text (/ActualText) that may repeat redacted words remains on "
-            f"{_pages(found)}",
-            found[0] if len(found) == 1 else None,
+            f"{_pages(found)}"
+        )
+    if elements:
+        problems.append(
+            f"{len(elements)} structure element(s) on redacted pages still carry replacement or "
+            "alternate text"
+        )
+    if problems:
+        return Check(
+            "replacement-text", "fail", "; ".join(problems), found[0] if len(found) == 1 else None
         )
     return Check(
         "replacement-text", "pass", "No replacement text (/ActualText) left on redacted pages"
