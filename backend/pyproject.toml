@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pdf-redact"
-version = "0.1.0"
+version = "1.0.0"
 description = "Local Acrobat-style PDF redaction tool with true content removal"
 requires-python = ">=3.11"
 # PyMuPDF is AGPL-3.0 (or commercial license from Artifex).

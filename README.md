@@ -8,7 +8,7 @@ per-session token that is handed to the browser in the link the server prints.
 
 See [PLAN.md](PLAN.md) for the feature specification and milestones.
 
-## Features so far
+## Features
 
 - Viewer: virtualized pages, thumbnails, zoom and fit modes, rotated pages, password-protected PDFs.
 - Marking:
