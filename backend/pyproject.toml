@@ -25,6 +25,10 @@ pdf-redact = "pdf_redact.main:cli"
 [tool.setuptools.packages.find]
 include = ["pdf_redact*"]
 
+[tool.setuptools.package-data]
+# The built UI, copied in by `python3 run.py --wheel`.
+pdf_redact = ["static/**/*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

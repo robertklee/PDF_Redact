@@ -63,16 +63,27 @@ See [PLAN.md](PLAN.md) for the feature specification and milestones.
 ## Run
 
 ```sh
-cd frontend && npm ci && npm run build && cd ..
-cd backend && python -m venv .venv && .venv/bin/pip install -e . && .venv/bin/pdf-redact
+python3 run.py
 ```
 
-The server opens the UI in your browser. Use `--port` to change the port and `--no-browser` to
-just print the link.
+The first run creates a Python environment in `backend/.venv`, installs the server and builds the
+UI; later runs redo only what has changed, and start in about a second. The server opens the UI in
+your browser. Use `--port` to change the port and `--no-browser` to just print the link.
+
+To install on machines without Node.js, build a wheel with the UI inside it:
+
+```sh
+python3 run.py --wheel                 # writes dist/pdf_redact-<version>-py3-none-any.whl
+pipx install dist/pdf_redact-*.whl     # elsewhere; or: python3 -m pip install …
+pdf-redact
+```
+
+See the [user guide](docs/USER_GUIDE.md) for how to use it.
 
 ## Develop
 
-Run the backend with a fixed token and the Vite dev server, which proxies `/api` to it:
+Run the backend with a fixed token and the Vite dev server, which proxies `/api` to it (after
+`python3 run.py` has set up the environment once):
 
 ```sh
 cd backend && .venv/bin/pip install -e '.[dev]'

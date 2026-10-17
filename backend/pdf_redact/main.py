@@ -69,7 +69,7 @@ def cli(argv: list[str] | None = None) -> None:
     url = f"http://{settings.host}:{settings.port}/#token={settings.token}"
     if settings.static_dir is None:
         print("Warning: UI build not found; run `npm run build` in frontend/ (API only).")
-    print(f"PDF Redact {__version__} running at:\n  {url}\nPress Ctrl+C to stop.")
+    print(f"PDF Redact {__version__} running at:\n  {url}\nPress Ctrl+C to stop.", flush=True)
     if not args.no_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
     uvicorn.run(app, host=settings.host, port=settings.port, log_level="warning")
