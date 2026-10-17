@@ -111,6 +111,42 @@ def test_apply_and_download(client) -> None:
     assert ABOVE in mupdf_text(out)
 
 
+def test_apply_sanitizes_by_default(client) -> None:
+    data = corpus.metadata()
+    doc_id = upload(client, data).json()["id"]
+    marks = [_mark(display_hits(data, SECRET))]
+    output = client.post(f"/api/documents/{doc_id}/apply", json={"marks": marks}).json()
+    sanitized = {a["code"]: a for a in output["stats"]["sanitized"]}
+    assert sanitized["metadata"]["count"] >= 4
+    assert "bookmarks" not in sanitized and "page-labels" not in sanitized  # off by default
+    checks = {c["name"] for c in output["verification"]["checks"]}
+    assert {"sanitize-metadata", "sanitize-hidden-text", "sanitize-layers"} <= checks
+    assert output["verification"]["passed"] is True
+    out = client.get(f"/api/outputs/{output['id']}/file").content
+    assert not raw_contains(out, SECRET)
+
+
+def test_apply_sanitize_options(client) -> None:
+    data = corpus.metadata()
+    doc_id = upload(client, data).json()["id"]
+    url = f"/api/documents/{doc_id}/apply"
+    options = {"sanitize": {"metadata": False, "pageLabels": True, "keepOcrText": False}}
+    output = client.post(url, json={"marks": [], "options": options}).json()
+    codes = [a["code"] for a in output["stats"]["sanitized"]]
+    assert "metadata" not in codes and "page-labels" in codes
+    out = client.get(f"/api/outputs/{output['id']}/file").content
+    with pymupdf.open(stream=out, filetype="pdf") as doc:
+        assert doc.metadata["author"] == SECRET
+
+    # null turns sanitization off: only the marks are applied.
+    output = client.post(url, json={"marks": [], "options": {"sanitize": None}}).json()
+    assert output["stats"]["sanitized"] == []
+    assert not any(c["name"].startswith("sanitize-") for c in output["verification"]["checks"])
+
+    bad = {"sanitize": {"forms": "shred"}}
+    assert client.post(url, json={"marks": [], "options": bad}).status_code == 422
+
+
 def test_apply_validation(client) -> None:
     doc_id = upload(client, corpus.text_basic()).json()["id"]
     url = f"/api/documents/{doc_id}/apply"

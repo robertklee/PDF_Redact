@@ -9,6 +9,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validat
 from pydantic.alias_generators import to_camel
 
 from .core.redact import Appearance, Mark, RedactOptions
+from .core.sanitize import SanitizeOptions
 
 HexColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
 
@@ -70,12 +71,39 @@ class MarkIn(ApiModel):
         return Mark(self.id, self.page, self.kind, list(self.rects), self.appearance.to_engine())
 
 
+class SanitizeIn(ApiModel):
+    """Removal of hidden information; see `SanitizeOptions`."""
+
+    metadata: bool = True
+    annotations: Literal["remove", "flatten", "keep"] = "remove"
+    forms: Literal["flatten", "reset", "keep"] = "flatten"
+    attachments: bool = True
+    links: bool = True
+    javascript: bool = True
+    thumbnails: bool = True
+    bookmarks: bool = False
+    page_labels: bool = False
+    layers: bool = True
+    outside_crop: bool = True
+    hidden_text: bool = True
+    keep_ocr_text: bool = True
+
+    def to_engine(self) -> SanitizeOptions:
+        return SanitizeOptions(**self.model_dump())
+
+
 class OptionsIn(ApiModel):
     images: Literal["pixels", "remove", "none"] = "pixels"
     graphics: Literal["covered", "touched", "none"] = "covered"
+    # null leaves everything but the marked content as it is.
+    sanitize: SanitizeIn | None = Field(default_factory=SanitizeIn)
 
     def to_engine(self) -> RedactOptions:
-        return RedactOptions(images=self.images, graphics=self.graphics)
+        return RedactOptions(
+            images=self.images,
+            graphics=self.graphics,
+            sanitize=self.sanitize.to_engine() if self.sanitize else None,
+        )
 
 
 class ApplyRequest(ApiModel):
@@ -129,6 +157,12 @@ class VerificationOut(ApiModel):
     checks: list[CheckOut]
 
 
+class SanitizeActionOut(ApiModel):
+    code: str
+    count: int
+    message: str
+
+
 class StatsOut(ApiModel):
     marks: int
     rects: int
@@ -139,6 +173,7 @@ class StatsOut(ApiModel):
     overlays_skipped: list[str]
     replacement_text_removed: int
     annotations_removed: int
+    sanitized: list[SanitizeActionOut]
 
 
 class OutputOut(ApiModel):
