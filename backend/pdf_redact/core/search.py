@@ -16,6 +16,7 @@ import re
 import unicodedata
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 Rect = tuple[float, float, float, float]
 
@@ -36,6 +37,12 @@ def normalize(text: str) -> str:
 
 def _is_space(c: str) -> bool:
     return c.strip() == ""
+
+
+@lru_cache(maxsize=4096)
+def _normalized_char(c: str) -> tuple[tuple[str, bool], ...]:
+    """A page character's normalised form, each part with whether it is whitespace."""
+    return tuple((n, _is_space(n)) for n in normalize(c))
 
 
 def _is_hyphen(c: str) -> bool:
@@ -152,17 +159,6 @@ def build_index(lines: list[dict], keep_hyphens: bool = False) -> PageIndex:
     chars: list[tuple[int, int]] = []
     space = True  # suppress leading whitespace
 
-    def emit(c: str, g: int | None) -> None:
-        nonlocal space
-        if _is_space(c):
-            if space:
-                return
-            c, space = " ", True
-        else:
-            space = False
-        text.append(c)
-        source.append(g)
-
     for li, line in enumerate(lines):
         hyphen = joins.get(li)
         for ci, c in enumerate(line["chars"]):
@@ -170,10 +166,19 @@ def build_index(lines: list[dict], keep_hyphens: bool = False) -> PageIndex:
             chars.append((li, ci))
             if hyphen is not None and (ci > hyphen or (ci == hyphen and not keep_hyphens)):
                 continue
-            for n in normalize(c):
-                emit(n, g)
-        if hyphen is None:
-            emit(" ", None)
+            for n, blank in _normalized_char(c):
+                if blank:
+                    if space:
+                        continue
+                    n, space = " ", True
+                else:
+                    space = False
+                text.append(n)
+                source.append(g)
+        if hyphen is None and not space:
+            text.append(" ")
+            source.append(None)
+            space = True
     while text and text[-1] == " ":
         text.pop()
         source.pop()

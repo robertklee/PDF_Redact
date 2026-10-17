@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 import pymupdf
-
-from .geometry import rect_list, to_display, union
 
 # Raw-dict defaults minus embedded image data (we only need text here).
 TEXT_FLAGS = pymupdf.TEXTFLAGS_RAWDICT & ~pymupdf.TEXT_PRESERVE_IMAGES
@@ -36,27 +35,46 @@ class Char:
         return pymupdf.Point((self.box.x0 + self.box.x1) / 2, (self.box.y0 + self.box.y1) / 2)
 
 
+Box = tuple[float, float, float, float]
+
+
 def tight_box(
-    bbox: pymupdf.Rect, origin: pymupdf.Point, size: float, direction: tuple[float, float]
-) -> pymupdf.Rect:
+    bbox: Sequence[float], origin: Sequence[float], size: float, direction: tuple[float, float]
+) -> Box:
     """Axis-aligned bounds of the glyph's advance x [baseline - descent, baseline + ascent]."""
+    x0, y0, x1, y1 = bbox
+    ox, oy = origin
     dx, dy = direction
+    if dx == 1.0 and dy == 0.0:
+        # Horizontal text, by far the most common: the general case below, simplified.
+        a0, a1 = x0 - ox, x1 - ox
+        if a1 < a0:
+            a0, a1 = a1, a0
+        return ox + a0, oy - TIGHT_ASCENT * size, ox + a1, oy + TIGHT_DESCENT * size
     ux, uy = dy, -dx  # "up" in y-down page space
     # The full box is symmetric about the glyph centre, so its projection onto the writing
     # direction gives the advance span (exact for axis-aligned text).
-    along = [
-        (x - origin.x) * dx + (y - origin.y) * dy
-        for x in (bbox.x0, bbox.x1)
-        for y in (bbox.y0, bbox.y1)
-    ]
+    along = (
+        (x0 - ox) * dx + (y0 - oy) * dy,
+        (x1 - ox) * dx + (y0 - oy) * dy,
+        (x0 - ox) * dx + (y1 - oy) * dy,
+        (x1 - ox) * dx + (y1 - oy) * dy,
+    )
     a0, a1 = min(along), max(along)
-    up0, up1 = -TIGHT_DESCENT * size, TIGHT_ASCENT * size
-    xs, ys = [], []
-    for a in (a0, a1):
-        for u in (up0, up1):
-            xs.append(origin.x + dx * a + ux * u)
-            ys.append(origin.y + dy * a + uy * u)
-    return pymupdf.Rect(min(xs), min(ys), max(xs), max(ys))
+    u0, u1 = -TIGHT_DESCENT * size, TIGHT_ASCENT * size
+    xs = (
+        ox + dx * a0 + ux * u0,
+        ox + dx * a0 + ux * u1,
+        ox + dx * a1 + ux * u0,
+        ox + dx * a1 + ux * u1,
+    )
+    ys = (
+        oy + dy * a0 + uy * u0,
+        oy + dy * a0 + uy * u1,
+        oy + dy * a1 + uy * u0,
+        oy + dy * a1 + uy * u1,
+    )
+    return min(xs), min(ys), max(xs), max(ys)
 
 
 _PAINTED = pymupdf.mupdf.FZ_STEXT_FILLED | pymupdf.mupdf.FZ_STEXT_STROKED
@@ -69,43 +87,49 @@ def _invisible(span: dict) -> bool:
     return isinstance(flags, int) and not flags & _PAINTED
 
 
-def extract_lines(page: pymupdf.Page, everywhere: bool = False) -> list[list[Char]]:
-    """All text lines on the page in reading order, each as a list of characters.
+# A character as plain values (fast to build): c, bbox, tight box, origin, size, invisible.
+RawChar = tuple[str, Box, Box, tuple[float, float], float, bool]
 
-    Only text inside the page area is included unless `everywhere` is set.
-    """
+
+def raw_lines(
+    page: pymupdf.Page, everywhere: bool = False
+) -> Iterator[tuple[tuple[float, float], list[RawChar]]]:
+    """The writing direction and characters of each text line, in reading order."""
     if everywhere:
         flags, clip = TEXT_FLAGS & ~pymupdf.TEXT_MEDIABOX_CLIP, pymupdf.INFINITE_RECT()
     else:
         flags, clip = TEXT_FLAGS, None
     raw = page.get_text("rawdict", flags=flags, clip=clip)
-    lines: list[list[Char]] = []
     for block in raw["blocks"]:
         if block.get("type") != 0:
             continue
         for line in block["lines"]:
             direction = (float(line["dir"][0]), float(line["dir"][1]))
-            chars = []
+            chars: list[RawChar] = []
             for span in line["spans"]:
                 size = float(span["size"])
                 invisible = _invisible(span)
                 for ch in span["chars"]:
-                    bbox, origin = pymupdf.Rect(ch["bbox"]), pymupdf.Point(ch["origin"])
-                    chars.append(
-                        Char(
-                            c=ch["c"],
-                            bbox=bbox,
-                            box=tight_box(bbox, origin, size, direction),
-                            origin=origin,
-                            size=size,
-                            line=len(lines),
-                            dir=direction,
-                            invisible=invisible,
-                        )
-                    )
+                    bbox, origin = ch["bbox"], ch["origin"]
+                    box = tight_box(bbox, origin, size, direction)
+                    chars.append((ch["c"], bbox, box, origin, size, invisible))
             if chars:
-                lines.append(chars)
-    return lines
+                yield direction, chars
+
+
+def extract_lines(page: pymupdf.Page, everywhere: bool = False) -> list[list[Char]]:
+    """All text lines on the page in reading order, each as a list of characters.
+
+    Only text inside the page area is included unless `everywhere` is set.
+    """
+    Rect, Point = pymupdf.Rect, pymupdf.Point
+    return [
+        [
+            Char(c, Rect(bbox), Rect(box), Point(origin), size, n, direction, invisible)
+            for c, bbox, box, origin, size, invisible in chars
+        ]
+        for n, (direction, chars) in enumerate(raw_lines(page, everywhere))
+    ]
 
 
 def line_texts(page: pymupdf.Page) -> list[str]:
@@ -118,20 +142,41 @@ def page_text_payload(page: pymupdf.Page) -> dict:
     out_lines = []
     unmapped = 0
     has_text = False
-    m = page.rotation_matrix
-    for chars in extract_lines(page):
-        boxes = [to_display(page, ch.box) for ch in chars]
-        direction = pymupdf.Point(chars[0].dir) * m - pymupdf.Point(0, 0) * m
+    # The rotation is a multiple of 90 degrees, so two opposite corners give the rotated box.
+    a, b, c, d, e, f = page.rotation_matrix
+    unrotated = page.rotation == 0
+    for (dx, dy), chars in raw_lines(page):
+        boxes = []
+        for _, _, (x0, y0, x1, y1), _, _, _ in chars:
+            if unrotated:
+                boxes.append([round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2)])
+                continue
+            px, py = x0 * a + y0 * c + e, x0 * b + y0 * d + f
+            qx, qy = x1 * a + y1 * c + e, x1 * b + y1 * d + f
+            boxes.append(
+                [
+                    round(min(px, qx), 2),
+                    round(min(py, qy), 2),
+                    round(max(px, qx), 2),
+                    round(max(py, qy), 2),
+                ]
+            )
+        text = [ch[0] for ch in chars]
         out_lines.append(
             {
-                "bbox": rect_list(union(boxes)),
-                "chars": [ch.c for ch in chars],
-                "boxes": [rect_list(b) for b in boxes],
-                "dir": [round(direction.x, 4), round(direction.y, 4)],
+                "bbox": [
+                    min(r[0] for r in boxes),
+                    min(r[1] for r in boxes),
+                    max(r[2] for r in boxes),
+                    max(r[3] for r in boxes),
+                ],
+                "chars": text,
+                "boxes": boxes,
+                "dir": [round(dx * a + dy * c, 4), round(dx * b + dy * d, 4)],
             }
         )
-        unmapped += sum(ch.c == REPLACEMENT_CHAR for ch in chars)
-        has_text = has_text or any(not ch.c.isspace() for ch in chars)
+        unmapped += text.count(REPLACEMENT_CHAR)
+        has_text = has_text or any(not ch.isspace() for ch in text)
     return {
         "index": page.number,
         "width": round(page.rect.width, 2),
