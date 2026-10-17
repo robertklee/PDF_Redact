@@ -26,8 +26,9 @@ from typing import Literal
 import pymupdf
 
 from .geometry import contains_point, overlaps, page_area, to_unrotated
-from .objects import strip_page_text_properties
+from .objects import delete_key, strip_page_text_properties
 from .overlay import DIRECTIONS, Appearance, drawable, layout_overlay
+from .sanitize import SanitizeAction, SanitizeOptions, sanitize_document
 from .text import Char, extract_lines
 
 MarkKind = Literal["text", "area", "page"]
@@ -66,6 +67,8 @@ class Mark:
 class RedactOptions:
     images: ImageMode = "pixels"
     graphics: GraphicsMode = "covered"
+    # Removal of hidden information; None leaves the rest of the document as it is.
+    sanitize: SanitizeOptions | None = None
 
 
 @dataclass
@@ -84,6 +87,7 @@ class RedactStats:
     replacement_text_removed: int = 0
     # Annotations, form fields and links that overlapped a mark and were deleted.
     annotations_removed: int = 0
+    sanitized: list[SanitizeAction] = field(default_factory=list)
 
 
 def mark_regions(page: pymupdf.Page, mark: Mark) -> list[pymupdf.Rect]:
@@ -242,7 +246,7 @@ def _remove_covered_annotations(page: pymupdf.Page, regions: list[pymupdf.Rect])
         # A field whose every widget was redacted must not keep its value.
         if _field_kids(doc, parent) <= deleted:
             for key in ("V", "DV"):
-                doc.xref_set_key(parent, key, "null")
+                delete_key(doc, parent, key)
 
     links = [link for link in page.get_links() if covered(to_unrotated(page, link["from"]))]
     for link in links:
@@ -321,6 +325,9 @@ def apply_marks(
             raise ValueError(f"Mark {mark.id} refers to page {mark.page}, which does not exist")
         by_page[mark.page].append(mark)
         stats.marks += 1
+    if options.sanitize is not None:
+        # Before the marks, so flattened fields and comments are page content they can redact.
+        stats.sanitized = sanitize_document(doc, options.sanitize)
     for page in doc:
         # apply_redactions() would apply these too, and elsewhere they would be left unapplied.
         _delete_existing_redact_annots(page)

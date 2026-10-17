@@ -23,6 +23,7 @@ from .geometry import (
 from .objects import page_has_text_properties
 from .overlay import drawable
 from .redact import Mark, RedactOptions, mark_regions, open_pdf
+from .sanitize import sanitize_findings
 from .search import normalize, page_indexes
 from .text import extract_lines, line_texts
 
@@ -347,6 +348,11 @@ def verify_bytes(
             result.checks += [verifier.verify(m) for m in by_page[pno]]
         if by_page:
             result.checks.append(replacement_text_check(doc, sorted(by_page)))
+        if options.sanitize is not None:
+            result.checks += [
+                Check(f"sanitize-{f.code}", "fail" if f.problem else "pass", f.problem or f.clean)
+                for f in sanitize_findings(doc, options.sanitize)
+            ]
         if search_terms:
             overlays = [drawable(m.appearance.overlay_text) for m in marks]
             result.checks += residual_checks(doc, search_terms, overlays)

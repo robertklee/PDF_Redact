@@ -150,9 +150,7 @@ def strip_page_text_properties(doc: pymupdf.Document, page: pymupdf.Page) -> int
                 continue
             removed = False
             for key in TEXT_PROPERTIES:
-                if get(doc, props, key.decode())[0] != "null":
-                    doc.xref_set_key(props.xref, props.key(key.decode()), "null")
-                    removed = True
+                removed |= delete_key(doc, props.xref, props.key(key.decode()))
             changed += removed
     return changed
 
@@ -176,3 +174,22 @@ def page_has_text_properties(doc: pymupdf.Document, page: pymupdf.Page) -> bool 
             ):
                 return True
     return False
+
+
+def delete_key(doc: pymupdf.Document, xref: int, path: str) -> bool:
+    """Delete a dictionary entry (``key`` or ``Outer/Inner/key``, following indirect references).
+
+    ``xref_set_key(..., "null")`` would leave the key in the file with a null value. Returns
+    whether the entry existed.
+    """
+    mupdf = pymupdf.mupdf
+    obj = mupdf.pdf_load_object(pymupdf._as_pdf_document(doc), xref)
+    *parents, last = path.split("/")
+    for name in parents:
+        if not mupdf.pdf_is_dict(obj):
+            return False
+        obj = mupdf.pdf_resolve_indirect(mupdf.pdf_dict_gets(obj, name))
+    if not mupdf.pdf_is_dict(obj) or mupdf.pdf_is_null(mupdf.pdf_dict_gets(obj, last)):
+        return False
+    mupdf.pdf_dict_dels(obj, last)
+    return True
