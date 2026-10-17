@@ -69,6 +69,8 @@ and even then only in a new copy of the file.
 The **Marks** tab lists every mark by page. Click one to go to it. `Delete` removes the selected
 marks, and **Undo** and **Redo** take back any change.
 
+![Marked personal information with the output preview and appearance controls](screenshots/redaction-workspace.png)
+
 ## Find text and personal information
 
 Open the **Search** tab (`⌘F` / `Ctrl+F`).
@@ -82,9 +84,11 @@ Open the **Search** tab (`⌘F` / `Ctrl+F`).
 
 Search all pages, the current page or a range. Review the results, untick any you want to keep,
 then **Mark** the rest. Long searches show their progress and can be cancelled.
-
+then **Mark** the rest. Long searches show their progress and can be cancelled.
+> Search only sees real text. Text in scanned pages or images can't be found, so mark it with
 > Search only sees real text. Text in scanned pages or images can't be found, so mark it with
 > **Mark area**.
+![Personal-information search results highlighted on the PDF page](screenshots/search-results.png)
 
 ## Choose how marks look
 
@@ -149,6 +153,8 @@ If a check fails, the problems are listed, and downloading needs your confirmati
 the marks, and apply again.
 
 **Download** saves the copy as *name*`_redacted.pdf`.
+
+![A verified redaction result, ready to download](screenshots/verified-result.png)
 
 ## Reports
 

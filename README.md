@@ -6,7 +6,7 @@ A local, Acrobat-style PDF redaction tool. Mark text or regions in a browser UI;
 Everything runs on your machine: the server listens on `127.0.0.1` only, and every API call needs a
 per-session token that is handed to the browser in the link the server prints.
 
-See [PLAN.md](PLAN.md) for the feature specification and milestones.
+See the [user guide](docs/USER_GUIDE.md) for usage, keyboard shortcuts and limitations.
 
 ## Features
 
@@ -55,6 +55,13 @@ See [PLAN.md](PLAN.md) for the feature specification and milestones.
   removes the selected marks. The page view scrolls with the arrow and page keys once focused.
   Every screen is checked with axe (WCAG 2.1 AA) in the end-to-end tests.
 
+## Screenshots
+
+![PDF Redact with personal information marked for redaction and the output preview enabled](docs/screenshots/redaction-workspace.png)
+
+See the [user guide](docs/USER_GUIDE.md) for screenshots of personal-information search and
+verification.
+
 ## Requirements
 
 - Python 3.11+
@@ -77,8 +84,6 @@ python3 run.py --wheel                 # writes dist/pdf_redact-<version>-py3-no
 pipx install dist/pdf_redact-*.whl     # elsewhere; or: python3 -m pip install …
 pdf-redact
 ```
-
-See the [user guide](docs/USER_GUIDE.md) for how to use it.
 
 ## Develop
 
