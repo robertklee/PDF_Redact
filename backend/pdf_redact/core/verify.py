@@ -110,6 +110,15 @@ def _path_crosses(drawing: dict, region: pymupdf.Rect) -> bool:
     return False
 
 
+def _painted_box(drawing: dict) -> pymupdf.Rect:
+    """The area a path paints, including half the stroke width on each side."""
+    rect = pymupdf.Rect(drawing["rect"])
+    if drawing.get("color") is None:
+        return rect
+    half = (drawing.get("width") or 0) / 2
+    return rect + (-half, -half, half, half)
+
+
 def _near(a: pymupdf.Rect, b: pymupdf.Rect, tol: float = 1.0) -> bool:
     return all(abs(x - y) <= tol for x, y in zip(a, b, strict=True))
 
@@ -205,17 +214,22 @@ class _PageVerifier:
 
     def _vectors(self, region: pymupdf.Rect) -> list[tuple[Status, str]]:
         probe = inset(region, 0.5)
-        kept = 0
+        kept = covered = 0
         for d in self.drawings:
             if not touches(d["rect"], probe):
                 continue
             if d.get("fill") is not None and any(_near(d["rect"], b) for b in self.own_boxes):
                 continue
-            if _path_crosses(d, probe):
+            if self.options.graphics != "none" and _painted_box(d) in region:
+                covered += 1
+            elif _path_crosses(d, probe):
                 kept += 1
+        problems: list[tuple[Status, str]] = []
+        if covered:
+            problems.append(("fail", f"{covered} vector path(s) inside the mark were not removed"))
         if kept:
-            return [("warn", f"{kept} vector path(s) pass under the mark and were kept")]
-        return []
+            problems.append(("warn", f"{kept} vector path(s) pass under the mark and were kept"))
+        return problems
 
     def _off_page_text(self) -> list[tuple[Status, str]]:
         area = page_area(self.page)

@@ -25,9 +25,10 @@ from typing import Literal
 
 import pymupdf
 
-from .geometry import contains_point, overlaps, page_area, to_unrotated
+from .geometry import contains_point, full_extent, overlaps, page_area, to_unrotated
 from .objects import delete_key, strip_page_text_properties
 from .overlay import DIRECTIONS, Appearance, drawable, layout_overlay
+from .removal import apply_regions, removal_bands, remove_glyphs
 from .sanitize import SanitizeAction, SanitizeOptions, sanitize_document
 from .text import Char, extract_lines
 
@@ -48,10 +49,6 @@ GRAPHICS_MODES: dict[str, int] = {
 
 # Tolerance (points) when deciding whether a glyph centre lies inside a text mark.
 SELECT_TOLERANCE = 0.5
-# How far past the page edges page marks reach to remove content placed off the page.
-OFF_PAGE = 100_000
-# Removal band through each glyph, as fractions of the font size above the baseline.
-BAND_LOW, BAND_HIGH = 0.30, 0.45
 
 
 @dataclass
@@ -106,44 +103,6 @@ def selected_chars(lines: Iterable[list[Char]], regions: list[pymupdf.Rect]) -> 
     ]
 
 
-def removal_bands(chars: Iterable[Char]) -> list[pymupdf.Rect]:
-    """Thin rectangles that touch the font boxes of exactly the given glyphs."""
-    runs: dict[tuple, list[Char]] = defaultdict(list)
-    for ch in chars:
-        dx, dy = ch.dir
-        base = ch.origin.x * dy - ch.origin.y * dx  # baseline offset along the "up" vector
-        runs[(ch.line, round(base, 1), round(ch.size, 1), ch.dir)].append(ch)
-
-    bands: list[pymupdf.Rect] = []
-    for (_, base, size, (dx, dy)), run in runs.items():
-        if not (abs(dx) > 0.999 or abs(dy) > 0.999):
-            # Diagonal text: an axis-aligned band would be too fat, so use a dot per glyph.
-            for ch in run:
-                h = max(0.1 * ch.size, 0.25)
-                c = ch.center
-                bands.append(pymupdf.Rect(c.x - h, c.y - h, c.x + h, c.y + h))
-            continue
-        up = (dy, -dx)
-        along = [ch.center.x * dx + ch.center.y * dy for ch in run]
-        a0, a1 = min(along), max(along)
-        if a1 - a0 < 0.5:
-            a0, a1 = a0 - 0.25, a1 + 0.25
-        p0, p1 = base + BAND_LOW * size, base + BAND_HIGH * size
-        corners = [(dx * a + up[0] * p, dy * a + up[1] * p) for a in (a0, a1) for p in (p0, p1)]
-        xs, ys = [c[0] for c in corners], [c[1] for c in corners]
-        bands.append(pymupdf.Rect(min(xs), min(ys), max(xs), max(ys)))
-    return bands
-
-
-def _full_extent(page: pymupdf.Page) -> pymupdf.Rect:
-    """Everything the page could draw, including content placed outside the MediaBox."""
-    return pymupdf.Rect(page_area(page)) + (-OFF_PAGE, -OFF_PAGE, OFF_PAGE, OFF_PAGE)
-
-
-def _add_box(page: pymupdf.Page, region: pymupdf.Rect, appearance: Appearance) -> None:
-    page.add_redact_annot(region, fill=appearance.fill, cross_out=False)
-
-
 def text_angle(page: pymupdf.Page, chars: Iterable[Char]) -> int | None:
     """Dominant display-space writing angle (0/90/180/270) of the glyphs, if axis-aligned."""
     votes: dict[int, int] = defaultdict(int)
@@ -191,16 +150,6 @@ def _draw_overlays(page: pymupdf.Page, overlays: list[Overlay]) -> list[str]:
             )
     shape.commit()
     return skipped
-
-
-def _remove_glyphs(page: pymupdf.Page, rects: list[pymupdf.Rect]) -> None:
-    for r in rects:
-        page.add_redact_annot(r, fill=None, cross_out=False)
-    page.apply_redactions(
-        images=pymupdf.PDF_REDACT_IMAGE_NONE,
-        graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
-        text=pymupdf.PDF_REDACT_TEXT_REMOVE,
-    )
 
 
 def _field_parent(doc: pymupdf.Document, xref: int) -> int | None:
@@ -286,29 +235,31 @@ def redact_page(
         areas += [(r, mark) for r in regions]
         if mark.kind == "page":
             # Also strip content hidden outside the CropBox.
-            areas.append((_full_extent(page), None))
+            areas.append((full_extent(page), None))
 
     if text_regions:
         targets = selected_chars(lines, text_regions)
         stats.glyphs_removed += len(targets)
-        _remove_glyphs(page, removal_bands(targets))
+        remove_glyphs(page, removal_bands(targets))
         survivors = selected_chars(extract_lines(page), text_regions)
         if survivors:
             stats.safety_pass_glyphs += len(survivors)
-            _remove_glyphs(page, [ch.bbox for ch in survivors])
+            remove_glyphs(page, [ch.bbox for ch in survivors])
 
-    if covers:
-        for cover in covers:
-            _add_box(page, cover.region, cover.appearance)
-        page.apply_redactions(images=images, graphics=graphics, text=pymupdf.PDF_REDACT_TEXT_NONE)
-
-    if areas:
-        for region, owner in areas:
-            if owner is None:
-                page.add_redact_annot(region, fill=None, cross_out=False)
-            else:
-                _add_box(page, region, owner.appearance)
-        page.apply_redactions(images=images, graphics=graphics, text=pymupdf.PDF_REDACT_TEXT_REMOVE)
+    apply_regions(
+        page,
+        [(c.region, c.appearance.fill) for c in covers],
+        images,
+        graphics,
+        pymupdf.PDF_REDACT_TEXT_NONE,
+    )
+    apply_regions(
+        page,
+        [(r, None if owner is None else owner.appearance.fill) for r, owner in areas],
+        images,
+        graphics,
+        pymupdf.PDF_REDACT_TEXT_REMOVE,
+    )
 
     covers += [Overlay(r, m.appearance, m.id) for r, m in areas if m is not None]
     stats.overlays_skipped += _draw_overlays(page, covers)

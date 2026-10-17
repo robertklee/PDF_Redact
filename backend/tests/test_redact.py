@@ -186,6 +186,22 @@ def test_vector_graphics_covered_removed_and_crossing_warned() -> None:
     assert "vector path" in _mark_check(verification).message
 
 
+def test_path_covered_by_one_mark_and_crossed_by_another_is_removed() -> None:
+    # MuPDF keeps a path that an earlier redaction only partly overlaps, even if a later one
+    # covers it completely.
+    data = corpus.vector_graphics()
+    marks = [
+        area_mark((230, 150, 330, 200), mark_id="a"),
+        area_mark((210, 170, 270, 230), mark_id="b"),
+    ]
+    assert not verify_bytes(data, marks).passed
+    out, _, verification = _redact_and_verify(data, marks)
+    with pymupdf.open(stream=out, filetype="pdf") as doc:
+        fills = [d.get("fill") for d in doc[0].get_drawings()]
+    assert (1.0, 0.0, 0.0) not in fills
+    assert verification.passed, verification.checks
+
+
 def test_vector_graphics_touched_mode_removes_crossing_line() -> None:
     data = corpus.vector_graphics()
     marks = [area_mark((200, 170, 280, 230))]

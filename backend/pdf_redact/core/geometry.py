@@ -29,6 +29,29 @@ def page_area(page: pymupdf.Page) -> pymupdf.Rect:
     return to_unrotated(page, page.rect)
 
 
+# How far past the page edges "the whole page" reaches, to include content placed off the page.
+OFF_PAGE = 100_000
+
+
+def full_extent(page: pymupdf.Page) -> pymupdf.Rect:
+    """Everything the page could draw, including content placed outside the MediaBox."""
+    return pymupdf.Rect(page_area(page)) + (-OFF_PAGE, -OFF_PAGE, OFF_PAGE, OFF_PAGE)
+
+
+def outside(area: pymupdf.Rect, extent: pymupdf.Rect) -> list[pymupdf.Rect]:
+    """Overlapping strips covering `extent` minus `area` (above, below, left, right).
+
+    Anything entirely outside `area` lies entirely within one of them.
+    """
+    strips = [
+        pymupdf.Rect(extent.x0, extent.y0, extent.x1, area.y0),
+        pymupdf.Rect(extent.x0, area.y1, extent.x1, extent.y1),
+        pymupdf.Rect(extent.x0, extent.y0, area.x0, extent.y1),
+        pymupdf.Rect(area.x1, extent.y0, extent.x1, extent.y1),
+    ]
+    return [r for r in strips if not r.is_empty]
+
+
 def rect_list(rect: pymupdf.Rect, ndigits: int = 2) -> list[float]:
     return [
         round(rect.x0, ndigits),
