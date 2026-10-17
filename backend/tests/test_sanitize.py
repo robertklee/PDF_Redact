@@ -77,6 +77,10 @@ def _doc(data: bytes) -> pymupdf.Document:
         "outside_crop",
         "off_page_text",
         "layers",
+        "form_fields",
+        "field_with_kids",
+        "tagged",
+        "incremental_update",
         "kitchen_sink",
     ],
 )
