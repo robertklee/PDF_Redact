@@ -12,10 +12,6 @@ import time
 from contextlib import contextmanager
 
 import pymupdf
-from fastapi.testclient import TestClient
-
-from pdf_redact.config import Settings
-from pdf_redact.main import create_app
 
 from .corpus import SECRET, _pattern_pixmap
 
@@ -52,6 +48,11 @@ def timed(label: str):
 
 
 def main(pages: int) -> None:
+    from fastapi.testclient import TestClient
+
+    from pdf_redact.config import Settings
+    from pdf_redact.main import create_app
+
     with timed(f"generate {pages} pages"):
         data = large_document(pages)
     print(f"{'size':<34} {len(data) / 1e6:7.1f} MB")

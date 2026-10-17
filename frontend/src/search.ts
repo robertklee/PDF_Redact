@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { api } from "./api";
+import { api, type Progress } from "./api";
 import { parseKeywords, searchMode } from "./lib/search";
 import type { CustomPattern, Detector, SearchMatch } from "./types";
 
@@ -60,6 +60,8 @@ interface SearchState extends SearchForm {
   detectors: Detector[] | null;
 
   status: "idle" | "running" | "done";
+  /** What the running search is doing, once it takes a moment. */
+  progress: Progress | null;
   error: string | null;
   hits: SearchMatch[];
   truncated: boolean;
@@ -77,6 +79,8 @@ interface SearchState extends SearchForm {
   /** Detectors that will run: the user's choice, or the defaults. */
   enabledCategories(): string[];
   run(documentId: string, pages?: number[]): Promise<void>;
+  /** Stop the running search, keeping the previous results. */
+  cancel(): void;
   setChecked(indexes: number[], checked: boolean): void;
   setActive(index: number | null): void;
   clearResults(): void;
@@ -84,12 +88,21 @@ interface SearchState extends SearchForm {
 
 const emptyResults = {
   status: "idle" as const,
+  progress: null,
   error: null,
   hits: [],
   truncated: false,
   checked: new Set<number>(),
   active: null,
 };
+
+/** Stops the running search on the server. */
+let running: AbortController | null = null;
+
+function stopRunning() {
+  running?.abort();
+  running = null;
+}
 
 export const useSearch = create<SearchState>()((set, get) => ({
   kind: "text",
@@ -136,18 +149,20 @@ export const useSearch = create<SearchState>()((set, get) => ({
   },
 
   async run(documentId, pages) {
+    stopRunning();
+    const controller = (running = new AbortController());
     const seq = get().seq + 1;
     const form = get();
-    set({ seq, status: "running", error: null });
+    set({ seq, status: "running", progress: null, error: null });
+    const job = {
+      signal: controller.signal,
+      onProgress: (progress: Progress) => get().seq === seq && set({ progress }),
+    };
     try {
       let response;
       if (form.kind === "text") {
-        response = await api.search(documentId, {
-          query: form.query,
-          mode: searchMode(form),
-          caseSensitive: form.caseSensitive,
-          pages,
-        });
+        const request = { query: form.query, mode: searchMode(form), caseSensitive: form.caseSensitive, pages };
+        response = await api.search(documentId, request, job);
       } else {
         const categories = form.enabledCategories();
         const keywords = parseKeywords(form.keywords);
@@ -155,11 +170,12 @@ export const useSearch = create<SearchState>()((set, get) => ({
         if (!categories.length && !keywords.length && !patterns.length) {
           throw new Error("Choose at least one kind of information, keyword or pattern to find.");
         }
-        response = await api.detect(documentId, { categories, keywords, patterns, pages });
+        response = await api.detect(documentId, { categories, keywords, patterns, pages }, job);
       }
       if (get().seq !== seq) return;
       set({
         status: "done",
+        progress: null,
         hits: response.matches,
         truncated: response.truncated,
         resultKind: form.kind,
@@ -167,9 +183,18 @@ export const useSearch = create<SearchState>()((set, get) => ({
         active: null,
       });
     } catch (err) {
+      // A newer search, a cancel or a cleared result list took over (and aborted this one).
       if (get().seq !== seq) return;
       set({ ...emptyResults, error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      if (running === controller) running = null;
     }
+  },
+
+  cancel() {
+    stopRunning();
+    const { seq, hits } = get();
+    set({ seq: seq + 1, status: hits.length ? "done" : "idle", progress: null });
   },
 
   setChecked(indexes, checked) {
@@ -186,6 +211,7 @@ export const useSearch = create<SearchState>()((set, get) => ({
   },
 
   clearResults() {
+    stopRunning();
     set({ ...emptyResults, seq: get().seq + 1 });
   },
 }));

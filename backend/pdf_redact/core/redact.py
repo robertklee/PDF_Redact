@@ -28,6 +28,7 @@ import pymupdf
 from .geometry import contains_point, full_extent, overlaps, page_area, to_unrotated
 from .objects import delete_key, strip_page_text_properties, strip_struct_text
 from .overlay import DIRECTIONS, Appearance, drawable, layout_overlay
+from .progress import report
 from .removal import apply_regions, removal_bands, remove_glyphs
 from .sanitize import SanitizeAction, SanitizeOptions, sanitize_document
 from .text import Char, all_text_lines, extract_lines
@@ -290,7 +291,8 @@ def apply_marks(
     for page in doc:
         # apply_redactions() would apply these too, and elsewhere they would be left unapplied.
         delete_redact_annots(page)
-    for pno in sorted(by_page):
+    for done, pno in enumerate(sorted(by_page)):
+        report("Applying redactions", done, len(by_page))
         page = doc[pno]
         redact_page(page, by_page[pno], options, stats)
         regions = [r for m in by_page[pno] for r in mark_regions(page, m)]
@@ -329,4 +331,5 @@ def redact_bytes(
 ) -> tuple[bytes, RedactStats]:
     with open_pdf(data, password) as doc:
         stats = apply_marks(doc, marks, options)
+        report("Saving the redacted file")
         return save_redacted(doc), stats

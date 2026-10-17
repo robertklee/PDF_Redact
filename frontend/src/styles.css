@@ -927,6 +927,26 @@ fieldset.options .sanitize-options label:has(select) {
   margin-left: auto;
 }
 
+.job-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.job-progress progress {
+  flex: 1;
+  min-width: 0;
+  height: 8px;
+  accent-color: var(--accent);
+}
+
 .search-form .error {
   margin: 0;
   font-size: 13px;

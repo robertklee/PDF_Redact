@@ -12,6 +12,7 @@ import type {
   SearchResponse,
 } from "./types";
 import { saveBlob } from "./lib/download";
+import { jsonLines } from "./lib/ndjson";
 import { searchTerms } from "./lib/search";
 
 const TOKEN_KEY = "pdf-redact-token";
@@ -37,6 +38,23 @@ export class ApiError extends Error {
   }
 }
 
+/** What a long operation is doing; `total` is 0 when unknown. */
+export interface Progress {
+  phase: string;
+  done: number;
+  total: number;
+}
+
+export interface JobOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: Progress) => void;
+}
+
+const abortError = () => new DOMException("Cancelled", "AbortError");
+
+/** Whether an operation failed because it was cancelled. */
+export const isAbort = (err: unknown) => err instanceof DOMException && err.name === "AbortError";
+
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("X-Session-Token", token);
@@ -44,6 +62,7 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
   try {
     res = await fetch(path, { ...init, headers });
   } catch {
+    if (init.signal?.aborted) throw abortError();
     throw new ApiError(0, "Cannot reach the PDF Redact server. Is it still running?");
   }
   if (!res.ok) {
@@ -80,6 +99,55 @@ function post<T>(path: string, body: unknown): Promise<T> {
   });
 }
 
+const NDJSON = "application/x-ndjson";
+
+type JobEvent<T> =
+  | { type: "job"; id: string }
+  | ({ type: "progress" } & Progress)
+  | { type: "result"; result: T }
+  | { type: "error"; status: number; detail: string }
+  | { type: "cancelled" };
+
+/**
+ * POST a long operation and follow its progress. Aborting `signal` cancels it on the server and
+ * rejects with an AbortError (see `isAbort`).
+ */
+async function runJob<T>(path: string, body: unknown, { signal, onProgress }: JobOptions = {}): Promise<T> {
+  if (signal?.aborted) throw abortError();
+  const res = await request(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: NDJSON },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.body || !res.headers.get("Content-Type")?.startsWith(NDJSON)) return res.json() as Promise<T>;
+
+  let jobId: string | null = null;
+  // Dropping the connection also stops the job, but say so explicitly in case a proxy keeps it open.
+  const cancel = () => {
+    if (jobId) request(`/api/jobs/${jobId}`, { method: "DELETE" }).catch(() => {});
+  };
+  signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    for await (const line of jsonLines(res.body)) {
+      const event = line as JobEvent<T>;
+      if (event.type === "job") jobId = event.id;
+      else if (event.type === "progress") onProgress?.({ phase: event.phase, done: event.done, total: event.total });
+      else if (event.type === "result") return event.result;
+      else if (event.type === "error") throw new ApiError(event.status, event.detail);
+      else if (event.type === "cancelled") break;
+    }
+  } catch (err) {
+    if (signal?.aborted) throw abortError();
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(0, "Lost the connection to the PDF Redact server. Is it still running?");
+  } finally {
+    signal?.removeEventListener("abort", cancel);
+  }
+  if (signal?.aborted) throw abortError();
+  throw new ApiError(0, "The server stopped before finishing. Try again.");
+}
+
 /** Marks as the server takes them; only search and detection text is sent (see `searchTerms`). */
 const wireMarks = (marks: Mark[]) =>
   marks.map(({ id, page, kind, rects, appearance, source, category, createdAt }) => ({
@@ -114,20 +182,21 @@ export const api = {
     return json(`/api/documents/${id}/pages/${page}/text`);
   },
 
-  search(id: string, request: SearchRequest): Promise<SearchResponse> {
-    return post(`/api/documents/${id}/search`, request);
+  search(id: string, request: SearchRequest, options?: JobOptions): Promise<SearchResponse> {
+    return runJob(`/api/documents/${id}/search`, request, options);
   },
 
-  detect(id: string, request: DetectRequest): Promise<SearchResponse> {
-    return post(`/api/documents/${id}/detect`, request);
+  detect(id: string, request: DetectRequest, options?: JobOptions): Promise<SearchResponse> {
+    return runJob(`/api/documents/${id}/detect`, request, options);
   },
 
   detectors(): Promise<Detector[]> {
     return json("/api/detectors");
   },
 
-  apply(id: string, marks: Mark[], options: ApplyOptions): Promise<OutputInfo> {
-    return post(`/api/documents/${id}/apply`, { marks: wireMarks(marks), options, searchTerms: searchTerms(marks) });
+  apply(id: string, marks: Mark[], options: ApplyOptions, job?: JobOptions): Promise<OutputInfo> {
+    const body = { marks: wireMarks(marks), options, searchTerms: searchTerms(marks) };
+    return runJob(`/api/documents/${id}/apply`, body, job);
   },
 
   /** Download a copy of the original carrying the marks as unapplied /Redact annotations. */

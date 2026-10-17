@@ -15,6 +15,7 @@ import { useMarks } from "../marks";
 import { useSearch } from "../search";
 import { useStore } from "../store";
 import type { CustomPattern } from "../types";
+import { JobProgress } from "./JobProgress";
 
 /** Find text or personal information and turn the hits into marks. */
 export function SearchPanel() {
@@ -104,6 +105,7 @@ function SearchForm() {
           {running ? "Searching…" : "Find"}
         </button>
       </div>
+      {form.progress && <JobProgress progress={form.progress} label="Searching" onCancel={form.cancel} />}
       {(rangeError ?? form.error) && (
         <p className="error" role="alert">
           {rangeError ?? form.error}

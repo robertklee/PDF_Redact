@@ -21,6 +21,7 @@ import pymupdf
 
 from .. import __version__
 from .geometry import to_display, union
+from .progress import report
 from .redact import (
     Mark,
     RedactOptions,
@@ -60,7 +61,8 @@ def marked_text(doc: pymupdf.Document, marks: list[Mark]) -> dict[str, str]:
     for mark in marks:
         by_page[mark.page].append(mark)
     texts: dict[str, str] = {}
-    for pno, page_marks in by_page.items():
+    for done, (pno, page_marks) in enumerate(by_page.items()):
+        report("Writing the audit report", done, len(by_page))
         page = doc[pno]
         lines = extract_lines(page)
         for mark in page_marks:

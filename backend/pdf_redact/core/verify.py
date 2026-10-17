@@ -22,6 +22,7 @@ from .geometry import (
 )
 from .objects import page_has_text_properties, struct_text_elements
 from .overlay import drawable
+from .progress import report
 from .redact import Mark, RedactOptions, mark_regions, open_pdf
 from .sanitize import sanitize_findings
 from .search import normalize, page_indexes
@@ -329,6 +330,7 @@ def residual_checks(
     texts: list[str] = []
     with layers_shown(doc) as shown:
         for page in shown:
+            report("Searching for marked text left elsewhere", page.number, shown.page_count)
             payload = [{"chars": list(line)} for line in line_texts(page, include_clipped=True)]
             parts = []
             for index in page_indexes(payload):
@@ -445,7 +447,8 @@ def verify_bytes(
     for mark in marks:
         by_page[mark.page].append(mark)
     with open_pdf(data, password) as doc:
-        for pno in sorted(by_page):
+        for done, pno in enumerate(sorted(by_page)):
+            report("Verifying the redactions", done, len(by_page))
             verifier = _PageVerifier(doc, doc[pno], by_page[pno], options)
             result.checks += [verifier.verify(m) for m in by_page[pno]]
         if by_page:

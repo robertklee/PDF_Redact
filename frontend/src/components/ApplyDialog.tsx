@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { api, ApiError } from "../api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, ApiError, isAbort, type Progress } from "../api";
 import { type ApplySettings, applyOptions, loadSettings, saveSettings } from "../lib/applySettings";
 import { describeMark, formatBytes, KIND_LABELS, plural } from "../lib/format";
 import { overlayDoesNotFit } from "../lib/overlay";
@@ -8,6 +8,7 @@ import { useMarks } from "../marks";
 import { useStore } from "../store";
 import type { Check, GraphicsMode, ImageMode, Mark, OutputInfo, ReportFormat, ReportText } from "../types";
 import { HiddenInfoOptions } from "./HiddenInfoOptions";
+import { JobProgress } from "./JobProgress";
 
 const IMAGE_MODES: { value: ImageMode; label: string; hint: string }[] = [
   { value: "pixels", label: "Blank the covered pixels", hint: "Recommended" },
@@ -36,6 +37,11 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
   const [settings, setSettingsState] = useState(loadSettings);
   const [phase, setPhase] = useState<Phase>({ name: "confirm" });
   const [override, setOverride] = useState(false);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const job = useRef<AbortController | null>(null);
+
+  // Closing the dialog some other way (e.g. the document is closed) stops the work too.
+  useEffect(() => () => job.current?.abort(), []);
 
   const summary = useMemo(() => {
     const kinds = { text: 0, area: 0, page: 0 };
@@ -54,13 +60,19 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
   }
 
   async function apply() {
+    const controller = (job.current = new AbortController());
     setPhase({ name: "working" });
+    setProgress(null);
     setOverride(false);
     try {
-      const output = await api.apply(doc.id, marks, applyOptions(settings, marks.length));
+      const options = applyOptions(settings, marks.length);
+      const output = await api.apply(doc.id, marks, options, { signal: controller.signal, onProgress: setProgress });
       setPhase({ name: "done", output, downloaded: false });
     } catch (e) {
-      setPhase({ name: "confirm", error: e instanceof ApiError ? e.message : String(e) });
+      if (isAbort(e)) setPhase({ name: "confirm" });
+      else setPhase({ name: "confirm", error: e instanceof ApiError ? e.message : String(e) });
+    } finally {
+      job.current = null;
     }
   }
 
@@ -82,10 +94,11 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
   }
 
   const busy = phase.name === "working";
-  const close = () => !busy && onClose();
+  const stop = () => job.current?.abort();
+  const close = () => (busy ? stop() : onClose());
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <div className="modal-backdrop" onMouseDown={(e) => !busy && e.target === e.currentTarget && close()}>
       <div
         className="modal apply-dialog"
         role="dialog"
@@ -191,19 +204,21 @@ export function ApplyDialog({ onClose }: { onClose: () => void }) {
                 {phase.error}
               </p>
             )}
-            <div className="actions">
-              <button type="button" onClick={close} disabled={busy}>
-                Cancel
-              </button>
-              <button
-                className="danger"
-                autoFocus
-                onClick={() => void apply()}
-                disabled={busy}
-              >
-                {busy ? "Applying…" : withMarks ? "Apply redactions" : "Remove hidden information"}
-              </button>
-            </div>
+            {busy ? (
+              <JobProgress progress={progress} label={withMarks ? "Applying redactions" : "Removing hidden information"}
+                onCancel={stop}
+                focusCancel
+              />
+            ) : (
+              <div className="actions">
+                <button type="button" onClick={close}>
+                  Cancel
+                </button>
+                <button className="danger" autoFocus onClick={() => void apply()}>
+                  {withMarks ? "Apply redactions" : "Remove hidden information"}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

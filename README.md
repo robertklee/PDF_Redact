@@ -19,7 +19,8 @@ See [PLAN.md](PLAN.md) for the feature specification and milestones.
   - Undo and redo (`⌘Z`/`Ctrl+Z`, `⇧⌘Z`/`Ctrl+Y`), delete (`Del`), select all (`⌘A`/`Ctrl+A`).
 - **Search** (`⌘F`/`Ctrl+F`): find text (whole words, match case, regular expressions) on all pages,
   the current page or a range. Matches survive line-break hyphenation and typographic quotes/dashes.
-  Review the hits, then mark the selected ones in one step.
+  Review the hits, then mark the selected ones in one step. Long searches show their progress and
+  can be cancelled.
 - **Personal info**: detect SSNs, EINs, phone numbers, emails, payment cards (Luhn-checked), IBANs,
   IP addresses, passport and driver's license numbers, US street addresses and (opt-in) dates, plus
   your own keywords and named regular expressions. Pattern lists can be saved and loaded as JSON.
@@ -30,7 +31,7 @@ See [PLAN.md](PLAN.md) for the feature specification and milestones.
 - **Redaction codes**: click codes such as FOIA `(b)(6)` or Privacy Act `(k)(5)` to add them to the
   overlay text of the selected marks. Create your own code sets, and import or export them as JSON.
 - **Apply**: choose how images and vector graphics under marks are handled, then download a redacted
-  copy. The original file is never modified. Each result is verified (no text, image pixels or
+  copy (with progress, and Cancel, on long documents). The original file is never modified. Each result is verified (no text, image pixels or
   earlier file revisions left under any mark); downloading a file that fails verification needs
   explicit confirmation. Text marked from search results is also searched for across the whole
   output (page text, bookmarks, properties, comments, links and form fields), with a warning for

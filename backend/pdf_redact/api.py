@@ -22,6 +22,7 @@ from .core import ENGINE_LOCK
 from .core.annots import marked_bytes, read_redact_annots
 from .core.inspect import document_notices, page_infos
 from .core.pii import DETECTORS, DETECTORS_BY_ID, CustomPattern, detect, keyword_pattern
+from .core.progress import report
 from .core.redact import redact_bytes
 from .core.report import (
     TEXT_MODES,
@@ -36,6 +37,7 @@ from .core.report import (
 from .core.search import Match, compile_query, find
 from .core.text import page_text_payload
 from .core.verify import verify_bytes
+from .jobs import Jobs, respond
 from .models import (
     ApplyRequest,
     CheckOut,
@@ -72,8 +74,13 @@ def get_settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
+def get_jobs(request: Request) -> Jobs:
+    return request.app.state.jobs
+
+
 StoreDep = Annotated[Store, Depends(get_store)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+JobsDep = Annotated[Jobs, Depends(get_jobs)]
 
 
 def _document(store: Store, document_id: str) -> StoredDocument:
@@ -205,16 +212,23 @@ def delete_document(document_id: str, store: StoreDep) -> Response:
     return Response(status_code=204)
 
 
-def _page_texts(document: StoredDocument, pages: list[int] | None) -> list[dict]:
-    """Cached text payloads of the given pages (all pages if None), in page order."""
+def _pages(document: StoredDocument, pages: list[int] | None) -> list[int]:
+    """The given pages (all pages if None) in page order; 404 if one doesn't exist."""
     with ENGINE_LOCK:
         count = document.doc.page_count
-        wanted = range(count) if pages is None else sorted(set(pages))
-        if wanted and not 0 <= wanted[-1] < count:
-            raise HTTPException(404, "Page not found")
-        for page in wanted:
-            if page not in document.text_cache:
-                document.text_cache[page] = page_text_payload(document.doc[page])
+    wanted = list(range(count)) if pages is None else sorted(set(pages))
+    if wanted and not (wanted[0] >= 0 and wanted[-1] < count):
+        raise HTTPException(404, "Page not found")
+    return wanted
+
+
+def _page_texts(document: StoredDocument, wanted: list[int]) -> list[dict]:
+    """Cached text payloads of pages that exist."""
+    with ENGINE_LOCK:
+        missing = [page for page in wanted if page not in document.text_cache]
+        for done, page in enumerate(missing):
+            report("Reading the text", done, len(missing))
+            document.text_cache[page] = page_text_payload(document.doc[page])
         return [document.text_cache[page] for page in wanted]
 
 
@@ -248,25 +262,31 @@ def _compile(pattern: str, mode: str, case_sensitive: bool, name: str | None = N
 @router.get("/documents/{document_id}/pages/{page}/text")
 def page_text(document_id: str, page: int, store: StoreDep) -> dict:
     document = _unlocked(store, document_id)
-    if page < 0:
-        raise HTTPException(404, "Page not found")
-    return _page_texts(document, [page])[0]
+    return _page_texts(document, _pages(document, [page]))[0]
 
 
-@router.post("/documents/{document_id}/search")
-def search_document(document_id: str, body: SearchRequest, store: StoreDep) -> SearchOut:
+@router.post("/documents/{document_id}/search", response_model=SearchOut)
+def search_document(
+    document_id: str, body: SearchRequest, store: StoreDep, jobs: JobsDep, request: Request
+) -> SearchOut | Response:
     """Find text, a phrase or a regular expression; matches come back as mark geometry."""
     document = _unlocked(store, document_id)
     if body.mode != "regex" and not body.query.strip():
         raise HTTPException(422, "Enter something to search for")
     pattern = _compile(body.query, body.mode, body.case_sensitive)
-    texts = _page_texts(document, body.pages)
+    pages = _pages(document, body.pages)
 
-    def matches() -> Iterator[Match]:
-        for text in texts:
-            yield from find(text["index"], text["lines"], pattern)
+    def work() -> SearchOut:
+        texts = _page_texts(document, pages)
 
-    return _search_out(matches())
+        def matches() -> Iterator[Match]:
+            for done, text in enumerate(texts):
+                report("Searching", done, len(texts))
+                yield from find(text["index"], text["lines"], pattern)
+
+        return _search_out(matches())
+
+    return respond(request, jobs, work)
 
 
 @router.get("/detectors")
@@ -279,8 +299,10 @@ def list_detectors() -> list[DetectorOut]:
     ]
 
 
-@router.post("/documents/{document_id}/detect")
-def detect_pii(document_id: str, body: DetectRequest, store: StoreDep) -> SearchOut:
+@router.post("/documents/{document_id}/detect", response_model=SearchOut)
+def detect_pii(
+    document_id: str, body: DetectRequest, store: StoreDep, jobs: JobsDep, request: Request
+) -> SearchOut | Response:
     """Find personal information, keywords and custom patterns."""
     document = _unlocked(store, document_id)
     unknown = [c for c in body.categories if c not in DETECTORS_BY_ID]
@@ -291,18 +313,40 @@ def detect_pii(document_id: str, body: DetectRequest, store: StoreDep) -> Search
     custom = [
         CustomPattern(p.name, _compile(p.pattern, "regex", True, p.name)) for p in body.patterns
     ]
-    texts = _page_texts(document, body.pages)
+    pages = _pages(document, body.pages)
 
-    def matches() -> Iterator[Match]:
-        for text in texts:
-            yield from detect(text["index"], text["lines"], detectors, keywords, custom)
+    def work() -> SearchOut:
+        texts = _page_texts(document, pages)
 
-    return _search_out(matches())
+        def matches() -> Iterator[Match]:
+            for done, text in enumerate(texts):
+                report("Looking for personal information", done, len(texts))
+                yield from detect(text["index"], text["lines"], detectors, keywords, custom)
+
+        return _search_out(matches())
+
+    return respond(request, jobs, work)
 
 
-@router.post("/documents/{document_id}/apply")
-def apply_redactions(document_id: str, body: ApplyRequest, store: StoreDep) -> OutputOut:
+@router.post("/documents/{document_id}/apply", response_model=OutputOut)
+def apply_redactions(
+    document_id: str, body: ApplyRequest, store: StoreDep, jobs: JobsDep, request: Request
+) -> OutputOut | Response:
     document = _unlocked(store, document_id)
+    return respond(request, jobs, lambda: _apply(store, document, body))
+
+
+@router.delete("/jobs/{job_id}", status_code=204)
+def cancel_job(job_id: str, jobs: JobsDep) -> Response:
+    """Cancel a search, detection or apply that streams its progress."""
+    try:
+        jobs.cancel(job_id)
+    except KeyError:
+        raise HTTPException(404, "No such job; it may have finished already") from None
+    return Response(status_code=204)
+
+
+def _apply(store: Store, document: StoredDocument, body: ApplyRequest) -> OutputOut:
     marks = [m.to_engine() for m in body.marks]
     options = body.options.to_engine()
     data = document.path.read_bytes()

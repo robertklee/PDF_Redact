@@ -18,6 +18,7 @@ from .geometry import contains_point, full_extent, outside, page_area
 from .hidden import hidden_text
 from .layers import layer_problems, merge_layers
 from .objects import Node, child, delete_key, get
+from .progress import report
 from .removal import apply_regions, removal_bands, remove_glyphs
 from .text import extract_lines
 
@@ -414,7 +415,8 @@ def sanitize_document(doc: pymupdf.Document, options: SanitizeOptions) -> list[S
             ("page-labels", remove_page_labels, lambda n: "Removed page labels" if n else "")
         )
     actions = []
-    for code, step, describe in steps:
+    for done, (code, step, describe) in enumerate(steps):
+        report("Removing hidden information", done, len(steps))
         count = step(doc)
         actions.append(SanitizeAction(code, count, describe(count) if count else "None found"))
     return actions
@@ -441,6 +443,7 @@ def _finding(code: str, problems: list[str], clean: str) -> Finding:
 
 
 def sanitize_findings(doc: pymupdf.Document, options: SanitizeOptions) -> list[Finding]:
+    report("Checking for hidden information")
     catalog = doc.pdf_catalog()
     findings: list[Finding] = []
     if options.forms != "keep":

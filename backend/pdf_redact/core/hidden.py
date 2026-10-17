@@ -12,6 +12,7 @@ import math
 import pymupdf
 
 from .geometry import contains_point, full_extent
+from .progress import report
 from .text import Box, Char, RawChar, raw_lines
 
 ZOOM = 2.0
@@ -108,6 +109,7 @@ def hidden_text(doc: pymupdf.Document, keep_ocr: bool = True) -> dict[int, list[
     with pymupdf.open() as scratch:
         scratch.insert_pdf(doc, annots=False, widgets=False, links=False)
         for page in scratch:
+            report("Looking for hidden text", page.number, scratch.page_count)
             if hidden := _unseen(page, keep_ocr):
                 found[page.number] = hidden
     return found
