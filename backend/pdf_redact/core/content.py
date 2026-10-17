@@ -241,7 +241,10 @@ class OptionalContentResult:
 
 
 def remove_hidden_content(
-    data: bytes, is_hidden: Callable[[bytes], bool], flatten: bool = True
+    data: bytes,
+    is_hidden: Callable[[bytes], bool],
+    flatten: bool = True,
+    hidden_xobject: Callable[[bytes], bool] | None = None,
 ) -> OptionalContentResult:
     """Remove what hidden optional content paints, keeping its graphics-state changes.
 
@@ -249,7 +252,8 @@ def remove_hidden_content(
     text showing, path painting, shadings, XObjects and inline images are dropped (path painting
     becomes ``n`` so clipping still applies); state operators such as ``q``/``Q``/``cm`` stay, as
     viewers also execute them. With `flatten`, visible optional-content markers become plain
-    ``/OC BMC`` so the content no longer depends on layer settings.
+    ``/OC BMC`` so the content no longer depends on layer settings. `hidden_xobject(name)` drops
+    ``/name Do`` for XObjects that are themselves optional content and hidden.
     """
     edits: list[tuple[int, int, bytes]] = []
     stack: list[bool] = []  # per open marked-content sequence: is it (inside) hidden content
@@ -284,6 +288,15 @@ def remove_hidden_content(
                 edits.append((op.start, op.end, b""))
             continue
         if not hidden:
+            if (
+                name == b"Do"
+                and hidden_xobject is not None
+                and len(op.operands) == 1
+                and op.operands[0].kind == "name"
+                and hidden_xobject(data[op.operands[0].start + 1 : op.operands[0].end])
+            ):
+                edits.append((op.start, op.end, b""))
+                removed += 1
             continue
         if name in (b"Tj", b"TJ", b"sh", b"Do", b"BI", b"MP", b"DP"):
             edits.append((op.start, op.end, b""))

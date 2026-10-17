@@ -3,6 +3,7 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
+from pdf_redact.core.layers import Visibility
 from pdf_redact.core.redact import RedactOptions, redact_bytes
 from pdf_redact.core.sanitize import SanitizeOptions
 from pdf_redact.core.verify import verify_bytes
@@ -29,6 +30,7 @@ NOTHING = SanitizeOptions(
     links=False,
     javascript=False,
     thumbnails=False,
+    layers=False,
     outside_crop=False,
     hidden_text=False,
 )
@@ -74,6 +76,7 @@ def _doc(data: bytes) -> pymupdf.Document:
         "hidden_text",
         "outside_crop",
         "off_page_text",
+        "layers",
         "kitchen_sink",
     ],
 )
@@ -352,3 +355,62 @@ def test_visible_pages_are_not_touched_by_page_content_options() -> None:
         _, stats, _ = _sanitize(data, ONLY_PAGE_CONTENT)
         assert _action(stats, "outside-crop").count == 0, name
         assert _action(stats, "hidden-text").count == 0, name
+
+
+def test_hidden_layers_are_removed_and_visible_layers_merged() -> None:
+    data = corpus.layers()
+    out, stats, verification = _sanitize(data, ONLY_PAGE_CONTENT)
+    assert _action(stats, "layers").count == 1
+    assert _check(verification, "layers").status == "pass"
+    text = mupdf_text(out)
+    assert "Hidden layer" not in text and "Needs both" not in text
+    assert "Shown layer text" in text and "Shown by expression" in text and SECRET_LINE in text
+    # Hidden text, the hidden image and comment, and the layer names are all gone.
+    assert not leaks(out, corpus.LAYER_SECRET)
+    assert not leaks(out, "Draft notes")
+    with _doc(out) as doc:
+        page = doc[0]
+        assert not page.get_image_info()
+        assert not list(page.annots())
+        assert not page.get_drawings()
+        assert not doc.get_ocgs()
+
+
+def test_original_with_layers_fails_the_check() -> None:
+    verification = verify_bytes(corpus.layers(), [], RedactOptions(sanitize=ONLY_PAGE_CONTENT))
+    check = _check(verification, "layers")
+    assert check.status == "fail"
+    assert "layer definitions remain" in check.message
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "hidden"),
+    [
+        ({"ocgs": "both", "policy": "AnyOn"}, False),
+        ({"ocgs": "both", "policy": "AllOn"}, True),
+        ({"ocgs": "both", "policy": "AnyOff"}, False),
+        ({"ocgs": "both", "policy": "AllOff"}, True),
+        ({"ocgs": "off", "policy": "AnyOff"}, False),
+        ({"ve": ["not", "off"]}, False),
+        ({"ve": ["and", "on", "off"]}, True),
+        ({"ve": ["or", "on", ["not", "on"]]}, False),
+        ({"ve": ["and", "on", ["not", "on"]]}, True),
+    ],
+)
+def test_layer_membership_policies(kwargs: dict, hidden: bool) -> None:
+    doc = pymupdf.open()
+    doc.new_page()
+    xrefs = {"off": doc.add_ocg("Off", on=False), "on": doc.add_ocg("On", on=True)}
+
+    def resolve(value):
+        if isinstance(value, list):
+            return [v if i == 0 else resolve(v) for i, v in enumerate(value)]
+        return xrefs[value]
+
+    if "ve" in kwargs:
+        ocmd = doc.set_ocmd(ve=resolve(kwargs["ve"]))
+    else:
+        members = list(xrefs.values()) if kwargs["ocgs"] == "both" else [xrefs["off"]]
+        ocmd = doc.set_ocmd(ocgs=members, policy=kwargs["policy"])
+    with _doc(doc.tobytes()) as reopened:
+        assert Visibility(reopened).hidden(ocmd) is hidden

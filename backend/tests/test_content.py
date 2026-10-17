@@ -103,6 +103,13 @@ def test_visible_layers_are_kept_unless_flattening():
     assert flat == b"/OC BMC (x) Tj EMC"
 
 
+def test_hidden_xobjects_are_not_drawn():
+    data = b"q /Im1 Do Q q /Fm2 Do Q"
+    result = remove_hidden_content(data, hidden(set()), hidden_xobject=hidden({b"Im1"}))
+    assert result.data == b"q  Q q /Fm2 Do Q"
+    assert result.removed == 1
+
+
 def test_unbalanced_emc_is_tolerated():
     data = b"EMC /OC /Off BDC (x) Tj"
     out = remove_hidden_content(data, hidden({b"Off"})).data

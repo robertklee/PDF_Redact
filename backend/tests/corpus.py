@@ -238,6 +238,31 @@ def hidden_text() -> bytes:
     return doc.tobytes()
 
 
+LAYER_SECRET = "LAYER-SECRET-0042"
+
+
+def layers() -> bytes:
+    """Optional content: a hidden layer (text, graphics, an image XObject and a comment), content
+    hidden through a membership dictionary, and a visible layer whose name is sensitive."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    _three_lines(page)
+    off = doc.add_ocg("Draft notes", on=False)
+    on = doc.add_ocg(f"Reviewer {LAYER_SECRET}", on=True)
+    both = doc.set_ocmd(ocgs=[off, on], policy="AllOn")
+    either = doc.set_ocmd(ve=["or", off, on])
+    page.insert_text((72, 300), f"Hidden layer {LAYER_SECRET}", fontsize=12, oc=off)
+    page.draw_rect(pymupdf.Rect(72, 320, 200, 360), color=None, fill=(1, 0, 0), oc=off)
+    page.insert_image(pymupdf.Rect(300, 300, 420, 360), pixmap=_pattern_pixmap(), oc=off)
+    page.insert_text((72, 400), f"Needs both {LAYER_SECRET}", fontsize=12, oc=both)
+    page.insert_text((72, 440), "Shown layer text", fontsize=12, oc=on)
+    page.insert_text((72, 470), "Shown by expression", fontsize=12, oc=either)
+    annot = page.add_freetext_annot(pymupdf.Rect(300, 400, 500, 430), f"Note {LAYER_SECRET}")
+    annot.set_oc(off)
+    annot.update()
+    return doc.tobytes()
+
+
 def actual_text() -> bytes:
     """Marked content whose /ActualText repeats the secret: inline, through a named property
     list, and inside a form XObject."""
@@ -365,6 +390,7 @@ FIXTURES: dict[str, Callable[[], bytes]] = {
     "cropbox_offset": cropbox_offset,
     "off_page_text": off_page_text,
     "outside_crop": outside_crop,
+    "layers": layers,
     "image_with_ocr_text": image_with_ocr_text,
     "scanned_image": scanned_image,
     "vector_graphics": vector_graphics,

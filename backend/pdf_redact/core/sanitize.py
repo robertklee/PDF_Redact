@@ -16,6 +16,7 @@ import pymupdf
 
 from .geometry import contains_point, full_extent, outside, page_area
 from .hidden import hidden_text
+from .layers import layer_problems, merge_layers
 from .objects import Node, child, delete_key, get
 from .removal import apply_regions, removal_bands, remove_glyphs
 from .text import extract_lines
@@ -51,6 +52,7 @@ class SanitizeOptions:
     thumbnails: bool = True
     bookmarks: bool = False
     page_labels: bool = False
+    layers: bool = True  # remove hidden layers and merge visible ones into the page
     outside_crop: bool = True  # content outside the visible page area
     hidden_text: bool = True  # invisible, background-coloured or covered text
     keep_ocr_text: bool = True  # but keep the invisible text layer over scanned images
@@ -348,6 +350,9 @@ def _plural(n: int, one: str, many: str | None = None) -> str:
 def sanitize_document(doc: pymupdf.Document, options: SanitizeOptions) -> list[SanitizeAction]:
     """Apply the enabled options; one action per option says what was removed."""
     steps: list[tuple[str, Callable[[pymupdf.Document], int], Callable[[int], str]]] = []
+    if options.layers:
+        # First, so content of hidden layers is never flattened into the page.
+        steps.append(("layers", merge_layers, lambda n: f"Removed {_plural(n, 'hidden layer')}"))
     if options.forms == "flatten":
         steps.append(("forms", flatten_forms, lambda n: f"Flattened {_plural(n, 'form field')}"))
     elif options.forms == "reset":
@@ -454,6 +459,8 @@ def sanitize_findings(doc: pymupdf.Document, options: SanitizeOptions) -> list[F
         count = sum(1 for page in doc for _ in page.annots())
         problems = [f"{_plural(count, 'comment')} remain"] if count else []
         findings.append(_finding("annotations", problems, "No comments left"))
+    if options.layers:
+        findings.append(_finding("layers", layer_problems(doc), "No layers left"))
     if options.outside_crop:
         chars = other = 0
         for page in doc:
